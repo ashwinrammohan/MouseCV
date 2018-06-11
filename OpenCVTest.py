@@ -7,7 +7,7 @@ clicks = 0
 lightest = 0
 darkest = 255
 
-mouse_vid = cv.VideoCapture("mouse_vid.tif")
+mouse_vid = wb.loadMovie("mouse_vid.tif")
 
 def mouse_click(event,x,y,flags,param):
 	global lightest, darkest, clicks
@@ -38,13 +38,10 @@ def mouse_click(event,x,y,flags,param):
 			cv.drawContours(contors_img, contours, index, (255,255,255), 2)
 			cv.imshow("Contours", contors_img)
 
-img = cv.imread("realmouse.png", 0)
-contors_img = img.copy()
-
 cv.namedWindow("Original")
 cv.setMouseCallback("Original", mouse_click)
 
-#wb.playMovie(img, )
+wb.playMovie(mouse_vid, cmap = cv.COLORMAP_BONE)
 
 cv.imshow("Original", img)
 cv.waitKey(0)
