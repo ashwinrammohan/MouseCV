@@ -6,6 +6,8 @@ clicks = 0
 lightest = 0
 darkest = 255
 
+mouse_vid = cv.VideoCapture("mouse_vid.tif")
+
 def mouse_click(event,x,y,flags,param):
 	global lightest, darkest, clicks
 	if event == cv.EVENT_LBUTTONUP:
@@ -39,7 +41,7 @@ contors_img = img.copy()
 cv.namedWindow("Original")
 cv.setMouseCallback("Original", mouse_click)
 
-wb.playMovie(img, )
+#wb.playMovie(img, )
 
 cv.imshow("Original", img)
 cv.waitKey(0)
