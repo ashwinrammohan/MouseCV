@@ -23,6 +23,8 @@ def mouse_click(event,x,y,flags,param):
 			retval, result = cv.threshold(img, lightest+10, 255, cv.THRESH_TOZERO_INV);
 			retval, result = cv.threshold(result, darkest-10, 255, cv.THRESH_BINARY);
 
+			#blah is there cause there's apparently supposed to be 3 outputs
+
 			blah, contours, hierarchy = cv.findContours(result, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
 
 			index = 0
