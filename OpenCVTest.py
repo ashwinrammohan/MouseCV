@@ -70,6 +70,7 @@ def foot_track(darkest, lightest, x, y):
 			if area > min_area and area < max_area and dist < closest_dist:
 				closest_dist = dist
 				closest_index = i
+				closest_pos = (foot_x, foot_y)
 
 		closest_moment = cv.moments(contours[closest_index])
 		new_centroid = (int(closest_moment['m10']/closest_moment['m00']),int(closest_moment['m01']/closest_moment['m00']))
@@ -86,7 +87,9 @@ def foot_track(darkest, lightest, x, y):
 			cv.drawContours(frame, contours, closest_index, (175,175,175), 2)
 			if not(has_contour):
 				has_contour = True
+				foot_pos = (closest_pos[0], closest_pos[1])
 				print("Found contour!")
+
 		
 		if verbose:
 			print("Processing frame #" + str(j))
@@ -107,7 +110,7 @@ def foot_click(event,x,y,flags,param):
 		if foot_clicks == 6:
 			print("Foot color calibrated, playing movie")
 			foot_pos = (x, y)
-			tail_track(tail_darkest, tail_lightest, tail_pos[0], tail_pos[1])
+			foot_track(tail_darkest, tail_lightest, tail_pos[0], tail_pos[1])
 			foot_track(foot_darkest, foot_lightest, foot_pos[0], foot_pos[1])
 			wb.playMovie(mouse_vid, cmap=cv.COLORMAP_BONE)
 
