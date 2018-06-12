@@ -41,6 +41,7 @@ def foot_track(darkest, lightest, x, y):
 
 	j = 0
 	has_contour = False
+	curr_centroid = (0,0)
 	for frame in mouse_vid:
 		retval, result = cv.threshold(frame, lightest+10, 255, cv.THRESH_TOZERO_INV);
 		retval, result = cv.threshold(result, darkest-10, 255, cv.THRESH_BINARY);
@@ -50,9 +51,7 @@ def foot_track(darkest, lightest, x, y):
 
 		closest_index = 0
 		closest_dist = 100000
-		curr_centroid = (0,0)
-		new_centroid = (0,0)
-		motion = new_centroid - curr_centroid
+		closest_pos = (0, 0)
 
 		for i, contour in enumerate(contours):
 			m = cv.moments(contour)
@@ -61,32 +60,33 @@ def foot_track(darkest, lightest, x, y):
 			if area == 0:
 				continue
 
-			foot_x = int(m['m10']/m['m00'])
-			foot_y = int(m['m01']/m['m00'])
-			dx = foot_x - foot_pos[0]
-			dy = foot_y - foot_pos[1]
+			foot_x = m['m10']/m['m00']
+			foot_y = m['m01']/m['m00']
+			dx = int(foot_x) - foot_pos[0]
+			dy = int(foot_y) - foot_pos[1]
 			dist = dx*dx + dy*dy
 
 			if area > min_area and area < max_area and dist < closest_dist:
 				closest_dist = dist
 				closest_index = i
-
-		closest_moment = cv.moments(contours[closest_index])
-		new_centroid = (int(closest_moment['m10']/closest_moment['m00']),int(closest_moment['m01']/closest_moment['m00']))
-		if j != 0:
-			motion = new_centroid - curr_centroid
-			print("Frame " + j + ": foot moved " + motion)
-		curr_centroid = new_centroid
+				closest_pos = (foot_x, foot_y)
 
 		if closest_dist > position_tolerance:
 			if has_contour:
 				print("Contour lost!")
 			has_contour = False
 		else:
+			if j != 0:
+				motion = (closest_pos[0] - curr_centroid[0], closest_pos[1] - curr_centroid[1])
+				print("Frame " + str(j) + ": foot moved " + str(motion))
+
 			cv.drawContours(frame, contours, closest_index, (175,175,175), 2)
 			if not(has_contour):
 				has_contour = True
+				foot_pos = (int(closest_pos[0]), int(closest_pos[1]))
 				print("Found contour!")
+
+		curr_centroid = (closest_pos[0], closest_pos[1])
 		
 		if verbose:
 			print("Processing frame #" + str(j))
@@ -107,11 +107,11 @@ def foot_click(event,x,y,flags,param):
 		if foot_clicks == 6:
 			print("Foot color calibrated, playing movie")
 			foot_pos = (x, y)
-			tail_track(tail_darkest, tail_lightest, tail_pos[0], tail_pos[1])
+			foot_track(tail_darkest, tail_lightest, tail_pos[0], tail_pos[1])
 			foot_track(foot_darkest, foot_lightest, foot_pos[0], foot_pos[1])
 			wb.playMovie(mouse_vid, cmap=cv.COLORMAP_BONE)
 
-def tail_track(darkest, lightest, x, y):
+'''def tail_track(darkest, lightest, x, y):
 	print(darkest, lightest)
 
 	retval, result = cv.threshold(mouse_frame, lightest+10, 255, cv.THRESH_TOZERO_INV);
@@ -182,7 +182,7 @@ def tail_track(darkest, lightest, x, y):
 			print("Processing frame #" + str(j))
 			#print("Searching " + str(len(contours)) + " contours...")
 			j += 1
-			print("Closest contour found at index " + str(closest_index) + ". Area = " + str(area) + ", Width = " + str(bounding_width))
+			print("Closest contour found at index " + str(closest_index) + ". Area = " + str(area) + ", Width = " + str(bounding_width))'''
 	
 def tail_click(event,x,y,flags,param):
 	global tail_lightest, tail_darkest, tail_clicks, tail_pos
