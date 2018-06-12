@@ -3,7 +3,7 @@ import cv2 as cv
 import wholeBrain as wb
 import matplotlib.pyplot as plt
 
-clicks = 1
+clicks = 0
 lightest = 0
 darkest = 255
 verbose = True
