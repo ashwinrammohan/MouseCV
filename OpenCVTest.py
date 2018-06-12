@@ -81,7 +81,7 @@ def foot_track(darkest, lightest, x, y):
 			if j != 0:
 				motion = (closest_pos[0] - curr_centroid[0], closest_pos[1] - curr_centroid[1])
 				f= open(vid_name + ".csv","w+")
-				f.write(str(j) + "," + motion[0] + "," + motion[1] + "," + math.sqrt(motion[0] * motion[0] + motion[1] * motion[1]))
+				f.write(str(j) + "," + motion[0] + "," + motion[1] + "," + math.sqrt(motion[0] * motion[0] + motion[1] * motion[1]) + "\n")
 				#print("Frame " + str(j) + ": foot moved " + str(motion))
 
 			cv.drawContours(frame, contours, closest_index, (175,175,175), 2)
