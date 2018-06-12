@@ -18,7 +18,7 @@ vid_name = "long_mouse_vid"
 mouse_vid = wb.loadMovie(vid_name + ".tif").astype("uint8")
 mouse_frame = mouse_vid[0]
 
-def foot_track(darkest, lightest, x, y):
+def foot_track(darkest, lightest, x, y, file_name):
 	print(darkest, lightest)
 	retval, result = cv.threshold(mouse_frame, lightest+10, 255, cv.THRESH_TOZERO_INV);
 	retval, result = cv.threshold(result, darkest-10, 255, cv.THRESH_BINARY);
@@ -44,7 +44,7 @@ def foot_track(darkest, lightest, x, y):
 	j = 0
 	has_contour = False
 	curr_centroid = (0,0)
-	f= open(vid_name + ".csv","w+")
+	f= open(file_name + ".csv","w+")
 	for frame in mouse_vid:
 		retval, result = cv.threshold(frame, lightest+10, 255, cv.THRESH_TOZERO_INV);
 		retval, result = cv.threshold(result, darkest-10, 255, cv.THRESH_BINARY);
@@ -87,7 +87,7 @@ def foot_track(darkest, lightest, x, y):
 			cv.drawContours(frame, contours, closest_index, (175,175,175), 2)
 			if not(has_contour):
 				has_contour = True
-				foot_pos = (int(closest_pos[0]), int(closest_pos[1]))
+				#foot_pos = (int(closest_pos[0]), int(closest_pos[1]))
 				print("Found contour!")
 
 		curr_centroid = (closest_pos[0], closest_pos[1])
@@ -111,8 +111,8 @@ def foot_click(event,x,y,flags,param):
 		if foot_clicks == 6:
 			print("Foot color calibrated, playing movie")
 			foot_pos = (x, y)
-			foot_track(tail_darkest, tail_lightest, tail_pos[0], tail_pos[1])
-			foot_track(foot_darkest, foot_lightest, foot_pos[0], foot_pos[1])
+			foot_track(tail_darkest, tail_lightest, tail_pos[0], tail_pos[1], vid_name+"_tail")
+			foot_track(foot_darkest, foot_lightest, foot_pos[0], foot_pos[1], vid_name+"_foot")
 			wb.playMovie(mouse_vid, cmap=cv.COLORMAP_BONE)
 
 '''def tail_track(darkest, lightest, x, y):
