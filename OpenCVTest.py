@@ -13,7 +13,7 @@ foot_pos = (0,0)
 tail_pos = (0,0)
 verbose = True
 
-mouse_vid = wb.loadMovie("mouse_vid.tif").astype("uint8")
+mouse_vid = wb.loadMovie("long_mouse_vid.tif").astype("uint8")
 mouse_frame = mouse_vid[0]
 
 def foot_track(darkest, lightest, x, y):
@@ -28,7 +28,7 @@ def foot_track(darkest, lightest, x, y):
 	min_area = 0
 	max_area = 0
 	foot_pos = (0,0)
-	position_tolerance = 30*30 #tolerance for change in position of foot (squared)
+	position_tolerance = 80*80 #tolerance for change in position of foot (squared)
 	for i, contour in enumerate(contours):
 		if cv.pointPolygonTest(contour, (x,y), False) > 0:
 			index = i
@@ -78,7 +78,7 @@ def foot_track(darkest, lightest, x, y):
 		else:
 			if j != 0:
 				motion = (closest_pos[0] - curr_centroid[0], closest_pos[1] - curr_centroid[1])
-				print("Frame " + str(j) + ": foot moved " + str(motion))
+				#print("Frame " + str(j) + ": foot moved " + str(motion))
 
 			cv.drawContours(frame, contours, closest_index, (175,175,175), 2)
 			if not(has_contour):
@@ -92,7 +92,7 @@ def foot_track(darkest, lightest, x, y):
 			print("Processing frame #" + str(j))
 			#print("Searching " + str(len(contours)) + " contours...")
 			j += 1
-			print("Correct contour found at index " + str(index) + ". Distance = " + str(closest_dist))
+			#print("Correct contour found at index " + str(index) + ". Distance = " + str(closest_dist))
 
 
 def foot_click(event,x,y,flags,param):
