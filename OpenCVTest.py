@@ -14,7 +14,7 @@ foot_pos = (0,0)
 tail_pos = (0,0)
 verbose = True
 
-vid_name = "long_mouse_vid"
+vid_name = "mouse_vid"
 mouse_vid = wb.loadMovie(vid_name + ".tif").astype("uint8")
 mouse_frame = mouse_vid[0]
 
