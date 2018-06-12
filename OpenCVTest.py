@@ -14,8 +14,9 @@ foot_pos = (0,0)
 tail_pos = (0,0)
 verbose = True
 
-vid_name = "mouse_vid"
-mouse_vid = wb.loadMovie(vid_name + ".tif").astype("uint8")
+vid_name = "all_mouse_vids"
+mouse_vid = wb.loadMovie(["long_mouse_vid_1.tif", "long_mouse_vid_2.tif", "long_mouse_vid_3.tif"]).astype("uint8") 
+#wb.loadMovie(vid_name + ".tif").astype("uint8")
 mouse_frame = mouse_vid[0]
 
 def foot_track(darkest, lightest, x, y, file_name):
