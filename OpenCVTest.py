@@ -50,6 +50,10 @@ def foot_track(darkest, lightest, x, y):
 
 		closest_index = 0
 		closest_dist = 100000
+		curr_centroid = (0,0)
+		new_centroid = (0,0)
+		motion = new_centroid - curr_centroid
+
 		for i, contour in enumerate(contours):
 			m = cv.moments(contour)
 			area = m["m00"]
@@ -66,6 +70,13 @@ def foot_track(darkest, lightest, x, y):
 			if area > min_area and area < max_area and dist < closest_dist:
 				closest_dist = dist
 				closest_index = i
+
+		closest_moment = cv.moments(contours[closest_index])
+		new_centroid = (int(closest_moment['m10']/closest_moment['m00']),int(closest_moment['m01']/closest_moment['m00']))
+		if j != 0:
+			motion = new_centroid - curr_centroid
+			print("Frame " + j + ": foot moved " + motion)
+		curr_centroid = new_centroid
 
 		if closest_dist > position_tolerance:
 			if has_contour:
@@ -135,6 +146,9 @@ def tail_track(darkest, lightest, x, y):
 		closest_area = 0
 		closest_width = 0
 		closest_index = 0
+		curr_centroid = (0,0)
+		new_centroid = (0,0)
+
 		for i, contour in enumerate(contours):
 			cont_area = cv.contourArea(contour)
 			bounding_rect = cv.minAreaRect(contour)
@@ -144,6 +158,13 @@ def tail_track(darkest, lightest, x, y):
 				closest_area = cont_area
 				closest_width = cont_width
 
+		closest_moment = cv.moments(contours[closest_index])
+		new_centroid = (int(closest_moment['m10']/closest_moment['m00']),int(closest_moment['m01']/closest_moment['m00']))
+		if j != 0:
+			motion = new_centroid - curr_centroid
+			print("Frame " + j + ": tail moved " + motion)
+		curr_centroid = new_centroid
+		
 		percent = abs(closest_area - area) / area
 		if percent > area_tolerance:
 			if has_contour:
