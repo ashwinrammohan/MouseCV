@@ -2,6 +2,7 @@ import numpy as np
 import cv2 as cv
 import wholeBrain as wb
 import matplotlib.pyplot as plt
+import math
 
 foot_clicks = 0
 tail_clicks = 0
@@ -13,7 +14,8 @@ foot_pos = (0,0)
 tail_pos = (0,0)
 verbose = True
 
-mouse_vid = wb.loadMovie("long_mouse_vid.tif").astype("uint8")
+vid_name = "long_mouse_vid"
+mouse_vid = wb.loadMovie(vid_name + ".tif").astype("uint8")
 mouse_frame = mouse_vid[0]
 
 def foot_track(darkest, lightest, x, y):
@@ -78,6 +80,8 @@ def foot_track(darkest, lightest, x, y):
 		else:
 			if j != 0:
 				motion = (closest_pos[0] - curr_centroid[0], closest_pos[1] - curr_centroid[1])
+				f= open(vid_name + ".csv","w+")
+				f.write(str(j) + "," + motion[0] + "," + motion[1] + "," + math.sqrt(motion[0] * motion[0] + motion[1] * motion[1]))
 				#print("Frame " + str(j) + ": foot moved " + str(motion))
 
 			cv.drawContours(frame, contours, closest_index, (175,175,175), 2)
@@ -93,7 +97,7 @@ def foot_track(darkest, lightest, x, y):
 			#print("Searching " + str(len(contours)) + " contours...")
 			j += 1
 			#print("Correct contour found at index " + str(index) + ". Distance = " + str(closest_dist))
-
+	f.close()
 
 def foot_click(event,x,y,flags,param):
 	global foot_lightest, foot_darkest, foot_clicks, foot_pos
