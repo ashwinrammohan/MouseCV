@@ -44,6 +44,7 @@ def foot_track(darkest, lightest, x, y):
 	j = 0
 	has_contour = False
 	curr_centroid = (0,0)
+	f= open(vid_name + ".csv","w+")
 	for frame in mouse_vid:
 		retval, result = cv.threshold(frame, lightest+10, 255, cv.THRESH_TOZERO_INV);
 		retval, result = cv.threshold(result, darkest-10, 255, cv.THRESH_BINARY);
@@ -80,7 +81,6 @@ def foot_track(darkest, lightest, x, y):
 		else:
 			if j != 0:
 				motion = (closest_pos[0] - curr_centroid[0], closest_pos[1] - curr_centroid[1])
-				f= open(vid_name + ".csv","w+")
 				f.write(str(j) + "," + str(motion[0]) + "," + str(motion[1]) + "," + str(math.sqrt(motion[0] * motion[0] + motion[1] * motion[1])) + "\n")
 				#print("Frame " + str(j) + ": foot moved " + str(motion))
 
