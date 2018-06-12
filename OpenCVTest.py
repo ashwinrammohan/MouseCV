@@ -52,6 +52,7 @@ def foot_track(darkest, lightest, x, y):
 		closest_dist = 100000
 		curr_centroid = (0,0)
 		new_centroid = (0,0)
+		closest_pos = (0, 0)
 		motion = new_centroid - curr_centroid
 
 		for i, contour in enumerate(contours):
