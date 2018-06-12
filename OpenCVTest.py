@@ -30,15 +30,21 @@ def mouse_click(event,x,y,flags,param):
 			blah, contours, hierarchy = cv.findContours(result, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
 
 			index = 0
+			area = 0
+			area_tolerance = 0.3 #% tolerance for varience in area
+			bounding_width = 0 #width of the contour bounding box
+			width_tolerance = 0.15 #% tolerance for varience in width
 			for i, contour in enumerate(contours):
 				if cv.pointPolygonTest(contour, (x,y), False) > 0:
 					index = i
-					M = cv.moments(contour)
-					contour_center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
-					print("Correct contour found at index ", index, ". Position: ", contour_center[0], ", ", contour_center[1])
+					area = cv.contourArea(contour)
+					bounding_rect = cv.minAreaRect(contour)
+					bounding_width = min(bounding_rect[1][0], bounding_rect[1][1])
+					print("Correct contour found at index " + str(index) + ". Area = " + str(area) + ", Width = " + str(bounding_width))
 					break;
 
 			j = 0
+			has_contour = False
 			for frame in mouse_vid:
 				retval, result = cv.threshold(frame, lightest+10, 255, cv.THRESH_TOZERO_INV);
 				retval, result = cv.threshold(result, darkest-10, 255, cv.THRESH_BINARY);
@@ -46,39 +52,40 @@ def mouse_click(event,x,y,flags,param):
 				#blah is there cause there's apparently supposed to be 3 outputs
 				blah, contours, hierarchy = cv.findContours(result, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
 
-				min_dist = 1000000
+				closest_area = 0
+				closest_width = 0
 				closest_index = 0
-				new_c_x = 0
-				new_c_y = 0
 				for i, contour in enumerate(contours):
-					M = cv.moments(contour)
-
-					if M["m00"] == 0:
-						continue
-
-					dx = int(M["m10"] / M["m00"]) - contour_center[0]
-					dy = int(M["m01"] / M["m00"]) - contour_center[1]
-					dist = dx*dx + dy*dy
-					if dist < min_dist:
+					cont_area = cv.contourArea(contour)
+					bounding_rect = cv.minAreaRect(contour)
+					cont_width = min(bounding_rect[1][0], bounding_rect[1][1])
+					if abs(cont_area - area) < abs(closest_area - area) and (cont_width - bounding_width) / bounding_width < width_tolerance:
 						closest_index = i
-						min_dist = dist
-						new_c_x = int(M["m10"] / M["m00"])
-						new_c_y = int(M["m01"] / M["m00"])
+						closest_area = cont_area
+						closest_width = cont_width
 
-				contour_center = (new_c_x, new_c_y)
+				percent = abs(closest_area - area) / area
+				if percent > area_tolerance:
+					if has_contour:
+						print("Contour lost!")
+					has_contour = False
+				else:
+					if not(has_contour):
+						has_contour = True
+						print("Found contour!")
+						area = closest_area
+						bounding_width = closest_width
+					cv.drawContours(frame, contours, closest_index, (175,175,175), 2)
+				
 				if verbose:
-					print("Processing frame #", j)
-					print("Searching ", len(contours), " contours...")
+					print("Processing frame #" + str(j))
+					#print("Searching " + str(len(contours)) + " contours...")
 					j += 1
-					print("Closest contour found at index", closest_index, ". Position: ", contour_center[0], ", ", contour_center[1])
+					print("Closest contour found at index " + str(closest_index) + ". Area = " + str(area) + ", Width = " + str(bounding_width))
 
-				cv.drawContours(frame, contours, closest_index, (255,255,255), 2)
 
-			j = 0
-			for frame in mouse_vid[:40]:
-				cv.imshow(str(j), frame)
-				j += 1
-			#wb.playMovie(mouse_vid, cmap=cv.COLORMAP_BONE)
+			
+			wb.playMovie(mouse_vid, cmap=cv.COLORMAP_BONE)
 			
 
 cv.namedWindow("Original")
