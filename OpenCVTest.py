@@ -3,7 +3,7 @@ import cv2 as cv
 import wholeBrain as wb
 import matplotlib.pyplot as plt
 import math
-import hdf5manager
+from hdf5manager import hdf5manager
 
 vid_name = "bottom1"
 
@@ -151,7 +151,7 @@ def foot_click(event,x,y,flags,param):
 def tail_track(darkest, lightest, x, y):
 	print(darkest, lightest)
 
-	retval, result = cv.threshold(mouse_frame, lightest+20, 255, cv.THRESH_TOZERO_INV);
+	retval, result = cv.threshold(mouse_frame, 255, 255, cv.THRESH_TOZERO_INV);#lightest+20, 255, cv.THRESH_TOZERO_INV);
 	retval, result = cv.threshold(result, darkest-20, 255, cv.THRESH_BINARY);
 
 	#blah is there cause there's apparently supposed to be 3 outputs
@@ -173,6 +173,10 @@ def tail_track(darkest, lightest, x, y):
 
 	j = 0
 	has_contour = False
+	curr_centroid = (0,0)
+	closest_pos = (0,0)
+	hdf5Dict = {"foot_x":[], "foot_y":[], "foot_magnitude":[], "foot_angle":[]}
+
 	for frame in mouse_vid:
 		retval, result = cv.threshold(frame, lightest+20, 255, cv.THRESH_TOZERO_INV);
 		retval, result = cv.threshold(result, darkest-20, 255, cv.THRESH_BINARY);
@@ -185,13 +189,21 @@ def tail_track(darkest, lightest, x, y):
 		closest_index = 0
 
 		for i, contour in enumerate(contours):
-			cont_area = cv.contourArea(contour)
+			m = cv.moments(contour)
+			cont_area = m["m00"]
+			if (cont_area == 0):
+				continue
+
+			tail_x = m['m10']/m['m00']
+			tail_y = m['m01']/m['m00']
+
 			bounding_rect = cv.minAreaRect(contour)
 			cont_width = min(bounding_rect[1][0], bounding_rect[1][1])
 			if abs(cont_area - area) < abs(closest_area - area) and (cont_width - bounding_width) / bounding_width < width_tolerance:
 				closest_index = i
 				closest_area = cont_area
 				closest_width = cont_width
+				closest_pos = (tail_x, tail_y)
 		
 		percent = abs(closest_area - area) / area
 		if percent > area_tolerance:
@@ -199,6 +211,14 @@ def tail_track(darkest, lightest, x, y):
 				print("Contour lost!")
 			has_contour = False
 		else:
+			if j != 0:
+				motion = (closest_pos[0] - curr_centroid[0], closest_pos[1] - curr_centroid[1])
+
+				hdf5Dict["foot_x"].append(motion[0])
+				hdf5Dict["foot_y"].append(motion[1])
+				hdf5Dict["foot_magnitude"].append(math.sqrt(motion[0] * motion[0] + motion[1] * motion[1]))
+				hdf5Dict["foot_angle"].append(math.atan2(motion[1], motion[0]))
+
 			if not(has_contour):
 				has_contour = True
 				print("Found contour!")
@@ -206,11 +226,15 @@ def tail_track(darkest, lightest, x, y):
 				bounding_width = closest_width
 			cv.drawContours(frame, contours, closest_index, (0,0,0), 2)
 		
+		curr_centroid = (closest_pos[0], closest_pos[1])
+
 		if verbose:
 			print("Processing frame #" + str(j))
 			#print("Searching " + str(len(contours)) + " contours...")
 			j += 1
 			print("Closest contour found at index " + str(closest_index) + ". Area = " + str(area) + ", Width = " + str(bounding_width))
+
+	hdf5File.save(hdf5Dict)
 	
 def tail_click(event,x,y,flags,param):
 	global tail_lightest, tail_darkest, tail_clicks, tail_pos
