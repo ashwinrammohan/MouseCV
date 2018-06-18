@@ -5,29 +5,31 @@ import matplotlib.pyplot as plt
 import math
 from hdf5manager import hdf5manager
 
+def load_mp4(vid_name):
+	cap = cv.VideoCapture(vid_name + ".mp4")
+	frameCount = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
+	frameWidth = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
+	frameHeight = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+
+	vid = np.empty((frameCount, frameHeight, frameWidth), np.dtype('uint8'))
+
+	fc = 0
+	ret = True
+
+	while (True):
+		result = cap.read()
+		if not(result[0]):
+			break
+
+		mouse_vid[fc] = result[1][:,:,0]
+		fc += 1
+
+	cap.release()
+	return vid
+
 vid_name = "bottom1"
-
-cap = cv.VideoCapture(vid_name + ".mp4")
-frameCount = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
-frameWidth = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
-frameHeight = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
-
-mouse_vid = np.empty((frameCount, frameHeight, frameWidth), np.dtype('uint8'))
-
+mouse_vid = load_mp4(vid_name)
 hdf5File = hdf5manager("/Users/andrew/MouseCV/testHDF5.hdf5")
-
-fc = 0
-ret = True
-
-while (True):
-	result = cap.read()
-	if not(result[0]):
-		break
-
-	mouse_vid[fc] = result[1][:,:,0]
-	fc += 1
-
-cap.release()
 
 foot_clicks = 0
 tail_clicks = 0
@@ -175,7 +177,8 @@ def tail_track(darkest, lightest, x, y):
 	has_contour = False
 	curr_centroid = (0,0)
 	closest_pos = (0,0)
-	hdf5Dict = {"foot_x":[], "foot_y":[], "foot_magnitude":[], "foot_angle":[], "frame":[]}
+	last_pos = (0,0)
+	hdf5Dict = {"foot1":{"x":[], "y":[], "dx":[], "dy":[], "magnitude":[], "angle":[]}}
 
 	for frame in mouse_vid:
 		retval, result = cv.threshold(frame, lightest+20, 255, cv.THRESH_TOZERO_INV);
@@ -207,6 +210,15 @@ def tail_track(darkest, lightest, x, y):
 		
 		percent = abs(closest_area - area) / area
 		if percent > area_tolerance:
+			motion = (closest_pos[0] - curr_centroid[0], closest_pos[1] - curr_centroid[1])
+
+			hdf5Dict["foot1"]["x"].append(last_pos[0])
+			hdf5Dict["foot1"]["y"].append(last_pos[1])
+			hdf5Dict["foot1"]["dx"].append(0)
+			hdf5Dict["foot1"]["dy"].append(0)
+			hdf5Dict["foot1"]["magnitude"].append(0)
+			hdf5Dict["foot1"]["angle"].append(0)
+
 			if has_contour:
 				print("Contour lost!")
 			has_contour = False
@@ -214,11 +226,13 @@ def tail_track(darkest, lightest, x, y):
 			if j != 0:
 				motion = (closest_pos[0] - curr_centroid[0], closest_pos[1] - curr_centroid[1])
 
-				hdf5Dict["foot_x"].append(motion[0])
-				hdf5Dict["foot_y"].append(motion[1])
-				hdf5Dict["foot_magnitude"].append(math.sqrt(motion[0] * motion[0] + motion[1] * motion[1]))
-				hdf5Dict["foot_angle"].append(math.atan2(motion[1], motion[0]))
-				hdf5Dict["frame"].append(j)
+				hdf5Dict["foot1"]["x"].append(curr_centroid[0])
+				hdf5Dict["foot1"]["y"].append(curr_centroid[1])
+				hdf5Dict["foot1"]["dx"].append(motion[0])
+				hdf5Dict["foot1"]["dy"].append(motion[1])
+				hdf5Dict["foot1"]["magnitude"].append(math.sqrt(motion[0] * motion[0] + motion[1] * motion[1]))
+				hdf5Dict["foot1"]["angle"].append(math.atan2(motion[1], motion[0]))
+				last_pos = curr_centroid
 
 			if not(has_contour):
 				has_contour = True
