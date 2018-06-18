@@ -175,7 +175,7 @@ def tail_track(darkest, lightest, x, y):
 	has_contour = False
 	curr_centroid = (0,0)
 	closest_pos = (0,0)
-	hdf5Dict = {"foot_x":[], "foot_y":[], "foot_magnitude":[], "foot_angle":[]}
+	hdf5Dict = {"foot_x":[], "foot_y":[], "foot_magnitude":[], "foot_angle":[], "frame":[]}
 
 	for frame in mouse_vid:
 		retval, result = cv.threshold(frame, lightest+20, 255, cv.THRESH_TOZERO_INV);
@@ -218,6 +218,7 @@ def tail_track(darkest, lightest, x, y):
 				hdf5Dict["foot_y"].append(motion[1])
 				hdf5Dict["foot_magnitude"].append(math.sqrt(motion[0] * motion[0] + motion[1] * motion[1]))
 				hdf5Dict["foot_angle"].append(math.atan2(motion[1], motion[0]))
+				hdf5Dict["frame"].append(j)
 
 			if not(has_contour):
 				has_contour = True
