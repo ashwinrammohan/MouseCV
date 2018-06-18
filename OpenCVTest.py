@@ -4,6 +4,28 @@ import wholeBrain as wb
 import matplotlib.pyplot as plt
 import math
 
+vid_name = "bottom1"
+
+cap = cv.VideoCapture(vid_name + ".mp4")
+frameCount = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
+frameWidth = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
+frameHeight = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+
+mouse_vid = np.empty((frameCount, frameHeight, frameWidth), np.dtype('uint8'))
+
+fc = 0
+ret = True
+
+while (True):
+	result = cap.read()
+	if not(result[0]):
+		break
+
+	mouse_vid[fc] = result[1][:,:,0]
+	fc += 1
+
+cap.release()
+
 foot_clicks = 0
 tail_clicks = 0
 tail_lightest = 0
@@ -14,15 +36,13 @@ foot_pos = (0,0)
 tail_pos = (0,0)
 verbose = True
 
-vid_name = "all_mouse_vids"
-mouse_vid = wb.loadMovie(["long_mouse_vid_1.tif", "long_mouse_vid_2.tif", "long_mouse_vid_3.tif"]).astype("uint8") 
-#wb.loadMovie(vid_name + ".tif").astype("uint8")
-mouse_frame = mouse_vid[0]
+#mouse_vid = None#wb.loadMovie(vid_name + ".mp4").astype("uint8")
+mouse_frame = mouse_vid[300]
 
 def foot_track(darkest, lightest, x, y, file_name):
 	print(darkest, lightest)
-	retval, result = cv.threshold(mouse_frame, lightest+10, 255, cv.THRESH_TOZERO_INV);
-	retval, result = cv.threshold(result, darkest-10, 255, cv.THRESH_BINARY);
+	retval, result = cv.threshold(mouse_frame, lightest+20, 255, cv.THRESH_TOZERO_INV);
+	retval, result = cv.threshold(result, darkest-20, 255, cv.THRESH_BINARY);
 
 	#blah is there cause there's apparently supposed to be 3 outputs
 	blah, contours, hierarchy = cv.findContours(result, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
@@ -32,6 +52,7 @@ def foot_track(darkest, lightest, x, y, file_name):
 	max_area = 0
 	foot_pos = (0,0)
 	position_tolerance = 80*80 #tolerance for change in position of foot (squared)
+	
 	for i, contour in enumerate(contours):
 		if cv.pointPolygonTest(contour, (x,y), False) > 0:
 			index = i
@@ -47,8 +68,8 @@ def foot_track(darkest, lightest, x, y, file_name):
 	curr_centroid = (0,0)
 	f= open(file_name + ".csv","w+")
 	for frame in mouse_vid:
-		retval, result = cv.threshold(frame, lightest+10, 255, cv.THRESH_TOZERO_INV);
-		retval, result = cv.threshold(result, darkest-10, 255, cv.THRESH_BINARY);
+		retval, result = cv.threshold(frame, lightest+20, 255, cv.THRESH_TOZERO_INV);
+		retval, result = cv.threshold(result, darkest-20, 255, cv.THRESH_BINARY);
 
 		#blah is there cause there's apparently supposed to be 3 outputs
 		blah, contours, hierarchy = cv.findContours(result, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
@@ -85,7 +106,7 @@ def foot_track(darkest, lightest, x, y, file_name):
 				f.write(str(j) + "," + str(motion[0]) + "," + str(motion[1]) + "," + str(math.sqrt(motion[0] * motion[0] + motion[1] * motion[1])) + "\n")
 				#print("Frame " + str(j) + ": foot moved " + str(motion))
 
-			cv.drawContours(frame, contours, closest_index, (175,175,175), 2)
+			cv.drawContours(frame, contours, closest_index, (0,0,0), 2)
 			if not(has_contour):
 				has_contour = True
 				#foot_pos = (int(closest_pos[0]), int(closest_pos[1]))
@@ -112,15 +133,15 @@ def foot_click(event,x,y,flags,param):
 		if foot_clicks == 6:
 			print("Foot color calibrated, playing movie")
 			foot_pos = (x, y)
-			foot_track(tail_darkest, tail_lightest, tail_pos[0], tail_pos[1], vid_name+"_tail")
+			tail_track(tail_darkest, tail_lightest, tail_pos[0], tail_pos[1])#, vid_name+"_tail")
 			foot_track(foot_darkest, foot_lightest, foot_pos[0], foot_pos[1], vid_name+"_foot")
 			wb.playMovie(mouse_vid, cmap=cv.COLORMAP_BONE)
 
-'''def tail_track(darkest, lightest, x, y):
+def tail_track(darkest, lightest, x, y):
 	print(darkest, lightest)
 
-	retval, result = cv.threshold(mouse_frame, lightest+10, 255, cv.THRESH_TOZERO_INV);
-	retval, result = cv.threshold(result, darkest-10, 255, cv.THRESH_BINARY);
+	retval, result = cv.threshold(mouse_frame, lightest+20, 255, cv.THRESH_TOZERO_INV);
+	retval, result = cv.threshold(result, darkest-20, 255, cv.THRESH_BINARY);
 
 	#blah is there cause there's apparently supposed to be 3 outputs
 	blah, contours, hierarchy = cv.findContours(result, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
@@ -142,8 +163,8 @@ def foot_click(event,x,y,flags,param):
 	j = 0
 	has_contour = False
 	for frame in mouse_vid:
-		retval, result = cv.threshold(frame, lightest+10, 255, cv.THRESH_TOZERO_INV);
-		retval, result = cv.threshold(result, darkest-10, 255, cv.THRESH_BINARY);
+		retval, result = cv.threshold(frame, lightest+20, 255, cv.THRESH_TOZERO_INV);
+		retval, result = cv.threshold(result, darkest-20, 255, cv.THRESH_BINARY);
 
 		#blah is there cause there's apparently supposed to be 3 outputs
 		blah, contours, hierarchy = cv.findContours(result, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
@@ -151,8 +172,6 @@ def foot_click(event,x,y,flags,param):
 		closest_area = 0
 		closest_width = 0
 		closest_index = 0
-		curr_centroid = (0,0)
-		new_centroid = (0,0)
 
 		for i, contour in enumerate(contours):
 			cont_area = cv.contourArea(contour)
@@ -162,13 +181,6 @@ def foot_click(event,x,y,flags,param):
 				closest_index = i
 				closest_area = cont_area
 				closest_width = cont_width
-
-		closest_moment = cv.moments(contours[closest_index])
-		new_centroid = (int(closest_moment['m10']/closest_moment['m00']),int(closest_moment['m01']/closest_moment['m00']))
-		if j != 0:
-			motion = new_centroid - curr_centroid
-			print("Frame " + j + ": tail moved " + motion)
-		curr_centroid = new_centroid
 		
 		percent = abs(closest_area - area) / area
 		if percent > area_tolerance:
@@ -181,13 +193,13 @@ def foot_click(event,x,y,flags,param):
 				print("Found contour!")
 				area = closest_area
 				bounding_width = closest_width
-			cv.drawContours(frame, contours, closest_index, (175,175,175), 2)
+			cv.drawContours(frame, contours, closest_index, (0,0,0), 2)
 		
 		if verbose:
 			print("Processing frame #" + str(j))
 			#print("Searching " + str(len(contours)) + " contours...")
 			j += 1
-			print("Closest contour found at index " + str(closest_index) + ". Area = " + str(area) + ", Width = " + str(bounding_width))'''
+			print("Closest contour found at index " + str(closest_index) + ". Area = " + str(area) + ", Width = " + str(bounding_width))
 	
 def tail_click(event,x,y,flags,param):
 	global tail_lightest, tail_darkest, tail_clicks, tail_pos
@@ -201,7 +213,9 @@ def tail_click(event,x,y,flags,param):
 		if tail_clicks == 6:
 			print("Tail color calibrated, now click foot")
 			tail_pos = (x, y)
-			cv.setMouseCallback("Original", foot_click)
+			#cv.setMouseCallback("Original", foot_click)
+			tail_track(tail_darkest, tail_lightest, tail_pos[0], tail_pos[1])#, vid_name+"_tail")
+			wb.playMovie(mouse_vid, cmap=cv.COLORMAP_BONE)
 			
 
 print("Click tail to gather color data")
