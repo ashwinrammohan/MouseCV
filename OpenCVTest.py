@@ -3,6 +3,7 @@ import cv2 as cv
 import wholeBrain as wb
 import matplotlib.pyplot as plt
 import math
+import hdf5manager
 
 vid_name = "bottom1"
 
@@ -12,6 +13,8 @@ frameWidth = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
 frameHeight = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
 
 mouse_vid = np.empty((frameCount, frameHeight, frameWidth), np.dtype('uint8'))
+
+hdf5File = hdf5manager("/Users/andrew/MouseCV/testHDF5.hdf5")
 
 fc = 0
 ret = True
@@ -66,7 +69,8 @@ def foot_track(darkest, lightest, x, y, file_name):
 	j = 0
 	has_contour = False
 	curr_centroid = (0,0)
-	f= open(file_name + ".csv","w+")
+	#f = open(file_name + ".csv","w+")
+	hdf5Dict = {"foot_x":[], "foot_y":[], "foot_magnitude":[], "foot_angle":[]}
 	for frame in mouse_vid:
 		retval, result = cv.threshold(frame, lightest+20, 255, cv.THRESH_TOZERO_INV);
 		retval, result = cv.threshold(result, darkest-20, 255, cv.THRESH_BINARY);
@@ -103,7 +107,13 @@ def foot_track(darkest, lightest, x, y, file_name):
 		else:
 			if j != 0:
 				motion = (closest_pos[0] - curr_centroid[0], closest_pos[1] - curr_centroid[1])
-				f.write(str(j) + "," + str(motion[0]) + "," + str(motion[1]) + "," + str(math.sqrt(motion[0] * motion[0] + motion[1] * motion[1])) + "\n")
+
+				hdf5Dict["foot_x"].append(motion[0])
+				hdf5Dict["foot_y"].append(motion[1])
+				hdf5Dict["foot_magnitude"].append(math.sqrt(motion[0] * motion[0] + motion[1] * motion[1]))
+				hdf5Dict["foot_angle"].append(math.atan2(motion[1], motion[0]))
+
+				#f.write(str(j) + "," + str(motion[0]) + "," + str(motion[1]) + "," + str(math.sqrt(motion[0] * motion[0] + motion[1] * motion[1])) + "\n")
 				#print("Frame " + str(j) + ": foot moved " + str(motion))
 
 			cv.drawContours(frame, contours, closest_index, (0,0,0), 2)
@@ -119,7 +129,8 @@ def foot_track(darkest, lightest, x, y, file_name):
 			#print("Searching " + str(len(contours)) + " contours...")
 			j += 1
 			#print("Correct contour found at index " + str(index) + ". Distance = " + str(closest_dist))
-	f.close()
+	#f.close()
+	hdf5File.save(hdf5Dict)
 
 def foot_click(event,x,y,flags,param):
 	global foot_lightest, foot_darkest, foot_clicks, foot_pos
