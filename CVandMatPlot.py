@@ -120,7 +120,7 @@ for i, frame in enumerate(new_movie):
 	print("Frame " + str(i) + " done.")
 
 print("Done! Saving to mp4...")
-wb.saveFile(datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")+"_DATA.mp4", new_movie, fps = 30)
+wb.saveFile(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")+"_DATA.avi", new_movie, fps = 30)
 print("Playing movie...")
 wb.playMovie(new_movie, cmap=cv.COLORMAP_BONE)
 cv.waitKey(0)

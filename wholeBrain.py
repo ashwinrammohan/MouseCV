@@ -279,6 +279,7 @@ def saveFile(path, array, resize_factor = 1, apply_cmap = True,
             else:
                 movietype = 'color'
         elif array.ndim == 4:
+            apply_cmap = False
             movietype = 'color'
         else:
             raise Exception('Input matrix was {0} dimensions. .avi '
@@ -298,8 +299,8 @@ def saveFile(path, array, resize_factor = 1, apply_cmap = True,
         out = cv2.VideoWriter(path, fourcc, display_speed, (h,w), True)
 
         for i in range(sz[0]):
-            frame = cv2.resize(array[i], (h,w), interpolation = cv2.INTER_AREA)
-            frame = frame.astype('uint8')
+            #frame = cv2.resize(array[i], (h,w), interpolation = cv2.INTER_AREA)
+            frame = array[i].astype('uint8')
             if apply_cmap:
                 frame = cv2.applyColorMap(frame, cv2.COLORMAP_BONE)
             out.write(frame)
