@@ -7,7 +7,7 @@ from hdf5manager import hdf5manager
 import os
 
 def load_mp4(vid_name):
-	cap = cv.VideoCapture(vid_name + ".mp4")
+	cap = cv.VideoCapture("Assets/" + vid_name + ".mp4")
 	frameCount = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
 	frameWidth = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
 	frameHeight = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
@@ -28,10 +28,10 @@ def load_mp4(vid_name):
 	cap.release()
 	return vid
 
-vid_name = "bottom1"
+vid_name = "paint1"
 mouse_vid = load_mp4(vid_name)
-hdf5FilePath = "testHDF5.hdf5"
-hdf5File = hdf5manager(hdf5FilePath)
+hdf5FilePath = "mouse_vectors.hdf5"
+hdf5File = hdf5manager("Assets/" + hdf5FilePath)
 mouse_frame = mouse_vid[300]
 
 hdf5Dict = {}
@@ -49,10 +49,14 @@ def track_limbs():
 		if selected[limbKey]:
 			area_track(darkest[limbKey], lightest[limbKey], pos[limbKey][0], pos[limbKey][1], limbKey)
 
-	os.remove(hdf5FilePath)
+	try:
+		os.remove(hdf5FilePath)
+	except FileNotFoundError:
+		print("Creating new file with name: " + hdf5FilePath)
+
 	hdf5File.save(hdf5Dict)
 	print("Done! Saving video...")
-	wb.saveFile("bottom1Contours.mp4", mouse_vid, fps = 30)
+	wb.saveFile("Assets/" + vid_name + "Contours.mp4", mouse_vid, fps = 30)
 	print("Playing movie...")
 	wb.playMovie(mouse_vid, cmap=cv.COLORMAP_BONE) 
 
@@ -102,6 +106,8 @@ def area_track(darkest, lightest, x, y, limb_label):
 		closest_area = 0
 		closest_width = 0
 		closest_index = 0
+		closest_dist = 10000
+		close_pos = (0,0)
 
 		for i, contour in enumerate(contours):
 			m = cv.moments(contour)
@@ -117,14 +123,17 @@ def area_track(darkest, lightest, x, y, limb_label):
 
 			bounding_rect = cv.minAreaRect(contour)
 			cont_width = min(bounding_rect[1][0], bounding_rect[1][1])
-			if abs(cont_area - area) < abs(closest_area - area) and (cont_width - bounding_width) / bounding_width < width_tolerance and dist < position_threshold:
+			if dist < closest_dist:
+			#if abs(cont_area - area) < abs(closest_area - area) and (cont_width - bounding_width) / bounding_width < width_tolerance and dist < position_threshold:
 				closest_index = i
 				closest_area = cont_area
 				closest_width = cont_width
-				closest_pos = (tail_x, tail_y)
+				closest_dist = dist
+				close_pos = (tail_x, tail_y)
 		
 		percent = abs(closest_area - area) / area
-		if percent > area_tolerance:
+		if closest_dist > position_threshold:
+		#if percent > area_tolerance:
 			motion = (closest_pos[0] - curr_centroid[0], closest_pos[1] - curr_centroid[1])
 
 			limb["x"].append(last_pos[0])
@@ -138,6 +147,7 @@ def area_track(darkest, lightest, x, y, limb_label):
 				print("Contour lost!")
 			has_contour = False
 		else:
+			closest_pos = close_pos
 			if j != 0:
 				motion = (closest_pos[0] - curr_centroid[0], closest_pos[1] - curr_centroid[1])
 
@@ -156,7 +166,7 @@ def area_track(darkest, lightest, x, y, limb_label):
 				bounding_width = closest_width
 			cv.drawContours(frame, contours, closest_index, (0,0,0), 2)
 		
-		curr_centroid = (closest_pos[0], closest_pos[1])
+		curr_centroid = closest_pos
 
 		if verbose:
 			print("Processing frame #" + str(j))

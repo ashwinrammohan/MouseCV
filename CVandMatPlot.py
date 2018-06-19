@@ -9,10 +9,11 @@ import math
 import datetime
 
 def load_mp4(vid_name):
-	cap = cv.VideoCapture(vid_name + ".mp4")
+	cap = cv.VideoCapture("Assets/" + vid_name + ".mp4")
 	frameCount = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
 	frameWidth = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
 	frameHeight = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+	print(str(frameCount) + " frames in source video")
 
 	vid = np.empty((frameCount, frameHeight, frameWidth), np.dtype('uint8'))
 
@@ -59,12 +60,12 @@ def arrayFromFigure(figure):
 	return image
 
 def loadHDF5(file_name):
-	data = hdf5manager(file_name+".hdf5").load()
+	data = hdf5manager("Assets/" + file_name + ".hdf5").load()
 
-	#data["footFL"]["pos"] = (0,1)
+	data["footFL"]["pos"] = (0,1)
 	data["footFR"]["pos"] = (0,-1)
 	#data["footBL"]["pos"] = (-1,1)
-	#data["footBR"]["pos"] = (-1,-1)
+	data["footBR"]["pos"] = (-1,-1)
 	#data["head"]["pos"] = (1,0)
 	#data["tail"]["pos"] = (-2,0)
 	return data
@@ -94,15 +95,17 @@ def parseAndDrawHDF5(figure, data, frameIndex):
 	sub.set_xlim(-5,5)
 	sub.set_ylim(-5,5)
 		
-movie_name = "bottom1Contours"
-data_name = "testHDF5"
+movie_name = "paint1Contours"
+data_name = "mouse_vectors"
 source_movie = load_mp4(movie_name)
 new_movie = np.zeros((source_movie.shape[0], 700, 1200, 3), dtype="uint8")
 data = loadHDF5(data_name)
 
+print(str(len(data["footFR"]["x"])) + " entries in vectorized data")
+
 fig = plt.figure(figsize=(4,6))
 
-for i, frame in enumerate(new_movie):
+for i, frame in enumerate(new_movie[1:]):
 	sourceShape = source_movie.shape
 	frame[:sourceShape[1],:sourceShape[2],0] = source_movie[i]
 	frame[:sourceShape[1],:sourceShape[2],1] = source_movie[i]
