@@ -301,7 +301,7 @@ def saveFile(path, array, resize_factor = 1, apply_cmap = True,
             frame = cv2.resize(array[i], (h,w), interpolation = cv2.INTER_AREA)
             frame = frame.astype('uint8')
             if apply_cmap:
-                frame = cv2.applyColorMap(frame, cv2.COLORMAP_JET)
+                frame = cv2.applyColorMap(frame, cv2.COLORMAP_BONE)
             out.write(frame)
         out.release()
 
