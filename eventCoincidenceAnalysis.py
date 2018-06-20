@@ -29,9 +29,9 @@ def detectSpike(data, interval = 10, stDev_threshold = 1.5):
 
 	for i in range(0,len(extra_data),2): #only iterates over the x value lists
 		curr_xlist = extra_data[i]
-		curr_ylist = extra_data[i+1]
+		curr_ylist = extra_data[i+1] #references the corresponding y values
 
-		avg = np.mean(curr_ylist) #references the corresponding y values
+		avg = np.mean(curr_ylist)
 		stDev = np.std(curr_ylist)
 
 		for j in range(0, len(curr_xlist)):
