@@ -42,7 +42,7 @@ def drawFigureForRange(figure, data, frame, range):
 		limb = data[limbKey]
 		bottom = max(0, frame - range)
 		top = min(len(limb["magnitude"]), frame + range)
-		sub.plot(np.arange(bottom, top), limb["magnitude"][bottom:top], 'g-')
+		sub.plot(np.arange(bottom, top), limb["magnitude"][bottom:top], '-', color=limb["color"])
 
 	sub.axvline(x=frame, color="red")
 	sub.set_xlabel("Frame #")
@@ -63,39 +63,32 @@ def loadHDF5(file_name):
 	data = hdf5manager("Assets/" + file_name + ".hdf5").load()
 
 	data["footFL"]["pos"] = (0,1)
+	data["footFL"]["color"] = (1, 0, 0)
 	data["footFR"]["pos"] = (0,-1)
+	data["footFR"]["color"] = (0, 1, 0)
 	#data["footBL"]["pos"] = (-1,1)
+	#data["footBL"]["color"] = (1, 0.7, 0.3)
 	data["footBR"]["pos"] = (-1,-1)
+	data["footBR"]["color"] = (0, 0, 1)
 	#data["head"]["pos"] = (1,0)
+	#data["head"]["color"] = (1, 0.3, 1)
 	#data["tail"]["pos"] = (-2,0)
+	#data["tail"]["color"] = (0.3, 1, 1)
 	return data
 
 def parseAndDrawHDF5(figure, data, frameIndex):
-	dxs = []
-	dys = []
-	xs = []
-	ys = []
-	x0s = []
-	y0s = []
-
+	sub = figure.add_subplot(211)
 	for limbKey in data.keys():
 		limb = data[limbKey]
-		xs.append(limb["x"][frameIndex])
-		ys.append(limb["y"][frameIndex])
-		dxs.append(limb["dx"][frameIndex])
-		dys.append(limb["dy"][frameIndex])
-		x0s.append(limb["pos"][0])
-		y0s.append(limb["pos"][1])
-
-	sub = figure.add_subplot(211)
-	sub.quiver(x0s, y0s, dxs, dys, angles='xy', scale_units='xy', scale=1)
+		sub.arrow(limb["pos"][0], limb["pos"][1], limb["dx"][frameIndex], limb["dy"][frameIndex], color=limb["color"])
+	#sub.quiver(x0s, y0s, dxs, dys, angles='xy', scale_units='xy', scale=1)
 
 	sub.set_xlabel('x')
 	sub.set_ylabel('y')
 	sub.set_xlim(-5,5)
 	sub.set_ylim(-5,5)
 		
-movie_name = "paint1Contours"
+movie_name = "paint3Contours"
 data_name = "mouse_vectors"
 source_movie = load_mp4(movie_name)
 new_movie = np.zeros((source_movie.shape[0], 700, 1200, 3), dtype="uint8")
