@@ -1,6 +1,7 @@
 *.tif
 *.h264
 *.mp4
+*.avi
 
 # gitignore from interwebs
 # Byte-compiled / optimized / DLL files
