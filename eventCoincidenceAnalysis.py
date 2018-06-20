@@ -4,43 +4,42 @@ from matplotlib import pyplot
 
 #Method for detecting spikes in data given certain thresholds
 #data is of the form: ((xvals), (yvals))
-#d_threshold - threshold for change in derivative at a given point
 #delta_threshold - threshold for delta between current value and moving average
-def detectSpike(data, d_threshold = 5, delta_threshold = 5):
+#stDev_threshold - if a y-value is greater than the mean by this threshold * stDev, that point is declared a spike
+def detectSpike(data, delta_threshold = 5, stDev_threshold = 1.5):
 	xvals = data[0]
 	yvals = data[1]
 
 	ROC = 0
 	movingAVG = 0
 	done = False
+	spikeIndices = set()
+
+	stDev = np.std(yvals)
+	mean = np.mean(yvals)
 
 	for i in range(1,len(xvals)-1):
-		if (not done):
-			leftX = xvals[i-1]
-			rightX = xvals[i+1]
+		if (yvals[i] - mean > stDev_threshold * stDev):
+			print("Spike detected at x = " + str(xvals[i]) + " due to standard deviation")
+			print("Index: " + str(i) + " y value: " + str(yvals[i]) + ", mean: " + str(mean) + ", std: " + str(stDev) + "\n")
+			spikeIndices.add(i)
+		
+		movingAVG = sum(yvals[0:i+1])/(i+1)
 
-			leftY = yvals[i-1]
-			rightY = yvals[i+1]
+		if (yvals[i]- movingAVG > delta_threshold):
+			print("Spike detected at x = " + str(xvals[i]) + " due to moving average change")
+			print("Index: " + str(i) + ": Y value: " + str(yvals[i]) + ", moving average: " + str(movingAVG) + "\n")
+			spikeIndices.add(i)
 
-			newROC = (rightY - leftY)/(rightX - leftX) #symmetric difference quotient
-			movingAVG = sum(yvals[0:i+1])/(i+1)
-			#print(str(i) + "(" + str(xvals[i]) + "," + str(yvals[i]) + ")" + " newROC = " + str(newROC) + "Old ROC: " + str(ROC))
-
-			if (newROC - ROC > d_threshold):
-				print("Spike detected at x = " + str(xvals[i]) + " due to derivative change")
-				print("Index: " + str(i) + " Old ROC: " + str(ROC) + ", New ROC: " + str(newROC))
-				done = True
-			elif (yvals[i]- movingAVG > delta_threshold):
-				print("Spike detected at x = " + str(xvals[i]) + " 2")
-				print("Index: " + str(i) + ": Y value: " + str(yvals[i]) + ", moving average: " + str(movingAVG))
-				done = True
-			else:
-				ROC = newROC
+	return spikeIndices
 
 xs = [1,2,3,4,5,6,7,8,9,10]
-ys = [1,4,9,16,25,36,49,64,81,125]
+ys = [1,4,9,16,25,36,49,64,81,100]
 data = [xs,ys]
-detectSpike(data, 5, 300)
+spikes = detectSpike(data,15,0.5)
+
+for i in spikes:
+	print("(" + str(xs[i]) + "," + str(ys[i]) + ")" + "\n")
 
 
 
