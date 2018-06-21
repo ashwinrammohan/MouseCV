@@ -86,12 +86,12 @@ def detectSpike(data, interval = 20, stDev_threshold = 1.5, derivative_threshold
 
 data = hdf5manager("P2_timecourses.hdf5").load()
 print("brain data below...")
-ys = data['brain'][0][:2000]
-print("Global Average: " + str(np.mean(ys)))
-print("Global Stdev: " + str(np.std(ys)))
+vals = data['brain'][0][:2000]
+print("Global Average: " + str(np.mean(vals)))
+print("Global Stdev: " + str(np.std(vals)))
 
 xs = list(np.linspace(0,2000,2000))
-spikes, avgs, stdevs = detectSpike(ys,100,3)
+spikes, avgs, stdevs = detectSpike(vals,100,3)
 
 legend = ("Data", "Avgs", "Stdevs")
 plt.plot(xs,vals)
@@ -105,8 +105,3 @@ for i in spikes:
 
 
 plt.show()
-
-
-'''
-xs = [1,2,3,4,5,6,7,8,9,10,11,12]
-ys = [1,4,9,16,25,36,49,64,81,100,121,144]
