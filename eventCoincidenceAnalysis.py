@@ -25,10 +25,10 @@ class FixedQueue:
 			self.head = 0
 
 #Method for detecting spikes in data given certain thresholds
-#data is of the form: ((xvals), (yvals))
-#delta_threshold - threshold for delta between current value and moving average
+#data is the y values
 #stDev_threshold - if a y-value is greater than the mean by this threshold * stDev, that point is declared a spike
-def detectSpike(data, interval = 20, stDev_threshold = 1.5):
+#derivative_threshold - if the derivative at a point is greater than this, then that point is declared a spike
+def detectSpike(data, interval = 20, stDev_threshold = 1.5, derivative_threshold = 4):
 	size = len(data)
 	spikeIndices = set()
 	
@@ -49,9 +49,9 @@ def detectSpike(data, interval = 20, stDev_threshold = 1.5):
 			print ("Spike detected at x = " + str(i))
 			spikeIndices.add(i)
 
-	localAvgs = []
-	localSTDs = []
-	for i in range(mid_interval, size - mid_interval):
+	localAvgs = [0] * mid_interval
+	localSTDs = [0] * mid_interval
+	for i in range(mid_interval, size):
 
 		before = i-mid_interval
 		after = i+mid_interval
@@ -64,38 +64,35 @@ def detectSpike(data, interval = 20, stDev_threshold = 1.5):
 		localAvgs.append(localAVG)
 		localSTDs.append(localSTDev)
 
-		if (data[i] - localAVG > localSTDev * stDev_threshold):
+		if (i < size -1):
+			derivative = (data[i+1]-data[i-1])/2
+
+		if (data[i] - localAVG > localSTDev * stDev_threshold) | (derivative > derivative_threshold):
 			print("Spike detected at x = " + str(i))
 			spikeIndices.add(i)
-
-			spikeIndices.add(orig_index)
-
 	return (spikeIndices, localAvgs, localSTDs)
 
-'''data = hdf5manager("P2_timecourses.hdf5").load()
-print("brain data below...")
-ys = data['brain'][0][:2000]
-print("Global Average: " + str(np.mean(ys)))
-print("Global Stdev: " + str(np.std(ys)))
+data = hdf5manager("P2_timecourses.hdf5").load()
+vals = data['brain'][0][:2000]
+print("Global Average: " + str(np.mean(vals)))
+print("Global Stdev: " + str(np.std(vals)))
 
 xs = list(np.linspace(0,2000,2000))
 
-plot_data = [xs,ys]
-spikes, avgs, stdevs = detectSpike(plot_data,100,3)
+spikes, avgs, stdevs = detectSpike(vals,100,3)
 
 legend = ("Data", "Avgs", "Stdevs")
-plt.plot(xs,ys)
+plt.plot(xs,vals)
 plt.plot(xs,avgs)
 plt.plot(xs, stdevs)
 plt.legend(legend)
-
 
 for i in spikes:
 	#print("(" + str(xs[i]) + "," + str(ys[i]) + ")" + "\n")
 	plt.axvline(x = xs[i], color = 'red')
 
 
-plt.show()'''
+plt.show()
 
 queueObj = FixedQueue(10)
 print(queueObj)
@@ -105,23 +102,4 @@ while answer != -1:
 	answer = int(input(">>> "))
 	queueObj.add_value(answer)
 	print(queueObj.sum())
-
-'''
-xs = [1,2,3,4,5,6,7,8,9,10,11,12]
-ys = [1,4,9,16,25,36,49,64,81,100,121,144]
-
-data = [xs,ys]
-spikes = detectSpike(data,10,1)
-
-for i in spikes:
-	print("(" + str(xs[i]) + "," + str(ys[i]) + ")" + "\n")
-	plt.axvline(x = xs[i], color = 'red')
-
-plt.scatter(xs, ys)
-plt.show()
-'''
-
-
-
-
 
