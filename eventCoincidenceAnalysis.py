@@ -3,69 +3,74 @@ import matplotlib
 from matplotlib import pyplot as plt
 from hdf5manager import *
 
+class FixedQueue:
+	def __init__(self, size, values=None):
+		if values != None and len(values) == size:
+			self.values = values
+		else:
+			self.values = [0] * size
+
+		self.size = size
+		self.head = 0
+		self.sum = 0
+
+	def add_value(self, value):
+		self.sum -= self.values[self.head]
+		self.sum += value
+
+		self.values[self.head] = value
+
+		self.head += 1
+		if self.head >= self.size:
+			self.head = 0
+
 #Method for detecting spikes in data given certain thresholds
 #data is of the form: ((xvals), (yvals))
 #delta_threshold - threshold for delta between current value and moving average
 #stDev_threshold - if a y-value is greater than the mean by this threshold * stDev, that point is declared a spike
 def detectSpike(data, interval = 20, stDev_threshold = 1.5):
-	xvals = data[0]
-	yvals = data[1]
+	size = len(data)
 	spikeIndices = set()
+	
+	mid_interval = interval#int(interval/2)
+
+	front_avg = np.mean(data[:mid_interval])
+	front_dev = np.std(data[:mid_interval])
+	back_avg = np.mean(data[-mid_interval:])
+	back_dev = np.std(data[-mid_interval:])
+
+	for i in range(mid_interval):
+		if (data[i] - front_avg > front_dev * stDev_threshold):
+			print ("Spike detected at x = " + str(i))
+			spikeIndices.add(i)
+
+	for i in range(size - mid_interval, size):
+		if (data[i] - back_avg > back_dev * stDev_threshold):
+			print ("Spike detected at x = " + str(i))
+			spikeIndices.add(i)
+
 	localAvgs = []
 	localSTDs = []
-	
-	mid_interval = int(interval/2)
-
-	new_xvals = xvals[mid_interval:len(xvals) - mid_interval + 1]
-	new_yvals = yvals[mid_interval:len(yvals) - mid_interval + 1]
-
-	extra_data = []
-
-	first_xvals = xvals[:mid_interval]
-	first_yvals = yvals[:mid_interval]
-	extra_data.append(first_xvals)
-	extra_data.append(first_yvals)
-	last_xvals = xvals[len(xvals) - mid_interval:]
-	last_yvals = yvals[len(xvals) - mid_interval:]
-	extra_data.append(last_xvals)
-	extra_data.append(last_yvals)
-
-	for i in range(0,len(extra_data),2): #only iterates over the x value lists
-		curr_xlist = extra_data[i]
-		curr_ylist = extra_data[i+1] #references the corresponding y values
-
-		avg = np.mean(curr_ylist)
-		stDev = np.std(curr_ylist)
-
-		for j in range(0, len(curr_xlist)):
-			orig_index = xvals.index(curr_xlist[j])
-			if (yvals[orig_index] - avg > stDev * stDev_threshold):
-				print ("Spike detected at x = " + str(xvals[orig_index]))
-				print("\n" + "Index: " + str(orig_index) + " y value: " + str(yvals[orig_index]) + ", local mean: " + str(avg) + ", local std: " + str(stDev) + "\n")
-				spikeIndices.add(orig_index)
-
-	localSTDev = 0
-	localAVG = 0
-	for i in range(0,len(xvals)):
+	for i in range(mid_interval, size - mid_interval):
 
 		before = i-mid_interval
 		after = i+mid_interval
 
-		std_subset = new_yvals[before:i]
-		mean_subset = new_yvals[before:i]
+		std_subset = data[before:i]
+		mean_subset = data[before:i]
 		localAVG = np.mean(mean_subset)
-		localAvgs.append(localAVG)
 		localSTDev = np.std(std_subset)
+
+		localAvgs.append(localAVG)
 		localSTDs.append(localSTDev)
 
-		if (new_yvals[i] - localAVG > localSTDev * stDev_threshold):
-			#print("Spike detected at x = " + str(xvals[i]))
-			#print("\n" + "Index: " + str(i) + " y value: " + str(yvals[i]) + ", local mean: " + str(localAVG) + ", local std: " + str(localSTDev) + "\n")
+		if (data[i] - localAVG > localSTDev * stDev_threshold):
+			print("Spike detected at x = " + str(i))
 			spikeIndices.add(i)
 
 	return (spikeIndices, localAvgs, localSTDs)
 
-data = hdf5manager("P2_timecourses.hdf5").load()
+'''data = hdf5manager("P2_timecourses.hdf5").load()
 print("brain data below...")
 ys = data['brain'][0][:2000]
 print("Global Average: " + str(np.mean(ys)))
@@ -88,7 +93,16 @@ for i in spikes:
 	plt.axvline(x = xs[i], color = 'red')
 
 
-plt.show()
+plt.show()'''
+
+queueObj = FixedQueue(10)
+print(queueObj)
+
+answer = 0
+while answer != -1:
+	answer = int(input(">>> "))
+	queueObj.add_value(answer)
+	print(queueObj.sum())
 
 '''
 xs = [1,2,3,4,5,6,7,8,9,10,11,12]

@@ -41,6 +41,8 @@ darkest = {"footFL":255, "footFR":255, "footBL":255, "footBR":255, "tail":255, "
 selected = {"footFL":False, "footFR":False, "footBL":False, "footBR":False, "tail":False, "head":False}
 pos = {"footFL":(0,0), "footFR":(0,0), "footBL":(0,0), "footBR":(0,0), "tail":(0,0), "head":(0,0)}
 currentLabel = ""
+crop_area = (0,0,100,100)
+stage = 0
 
 verbose = True
 
@@ -56,7 +58,23 @@ def track_limbs():
 
 	hdf5File.save(hdf5Dict)
 	print("Done! Saving video...")
-	wb.saveFile("Assets/" + vid_name + "Contours.mp4", mouse_vid, fps = 30)
+
+	resize_factor = 1
+	if resize_factor != 1:
+		print("Resizing, factor = " + str(resize_factor))
+		width = int(mouse_vid.shape[2] * resize_factor)
+		height = int(mouse_vid.shape[1] * resize_factor)
+		print("Old size: (" + str(mouse_vid.shape[2]) + ", " + str(mouse_vid.shape[1]) + ")")
+		print("New size: " + str((width, height)))
+
+		sized_vid = np.zeros((mouse_vid.shape[0], height, width), dtype="uint8")
+		for i, frame in enumerate(mouse_vid):
+			sized_vid[i] = cv.resize(frame, (width, height), interpolation = cv.INTER_AREA)
+
+		wb.saveFile("Assets/" + vid_name + "Contours.avi", sized_vid, fps = 30)
+	else:
+		wb.saveFile("Assets/" + vid_name + "Contours.avi", mouse_vid, fps = 30)
+
 	print("Playing movie...")
 	wb.playMovie(mouse_vid, cmap=cv.COLORMAP_BONE) 
 
@@ -131,7 +149,7 @@ def area_track(darkest, lightest, x, y, limb_label):
 				closest_dist = dist
 				close_pos = (tail_x, tail_y)
 		
-		percent = abs(closest_area - area) / area
+		#percent = abs(closest_area - area) / area
 		if closest_dist > position_threshold:
 		#if percent > area_tolerance:
 			motion = (closest_pos[0] - curr_centroid[0], closest_pos[1] - curr_centroid[1])
@@ -175,11 +193,41 @@ def area_track(darkest, lightest, x, y, limb_label):
 
 	
 def limb_click(event,x,y,flags,param):
-	global currentLabel
-	if currentLabel == "":
-		return
+	global currentLabel, stage, crop_area, mouse_vid, mouse_frame
 
-	if event == cv.EVENT_LBUTTONUP:
+	if event == cv.EVENT_MOUSEMOVE and stage == 1:
+		new_frame = np.copy(mouse_vid[300])
+		cv.rectangle(new_frame, crop_area[:2], (x,y), (255, 255, 255), 2)
+		cv.imshow("Original", new_frame)
+
+	elif event == cv.EVENT_LBUTTONUP:
+		if stage == 0:
+			crop_area = (x, y, 100, 100)
+			print("Now click to define lower right corner of region of interest")
+			stage += 1
+			return
+		elif stage == 1:
+			crop_area = crop_area[:2] + (x, y)
+			stage += 1
+
+			x1 = crop_area[0]
+			y1 = crop_area[1]
+			x2 = crop_area[2]
+			y2 = crop_area[3]
+			new_vid = np.zeros((mouse_vid.shape[0], y2 - y1, x2 - x1), dtype="uint8")
+			for i in range(len(mouse_vid)):
+				new_vid[i] = mouse_vid[i][y1:y2, x1:x2]
+
+			mouse_vid = new_vid
+			mouse_frame = mouse_vid[300]
+			cv.imshow("Original", mouse_frame)
+			cv.waitKey(10)
+			printLabels()
+			return
+
+		if currentLabel == "":
+			return
+
 		if lightest[currentLabel] < mouse_frame.item(y,x):
 			lightest[currentLabel] = mouse_frame.item(y,x)
 		if darkest[currentLabel] > mouse_frame.item(y,x):
@@ -190,7 +238,7 @@ def limb_click(event,x,y,flags,param):
 		if clicks[currentLabel] == 6:
 			print(currentLabel + " color calibrated, tracking")
 			pos[currentLabel] = (x, y)
-			area_track(darkest[currentLabel], lightest[currentLabel], pos[currentLabel][0], pos[currentLabel][1], currentLabel)
+			selected[currentLabel] = True
 			currentLabel = ""
 			printLabels()
 			
@@ -220,7 +268,7 @@ cv.setMouseCallback("Original", limb_click)
 cv.imshow("Original", mouse_frame)
 
 cv.waitKey(10)
-printLabels()
+print("Click upper left corner of region of interest")
 
 cv.waitKey(0)
 cv.destroyAllWindows()
