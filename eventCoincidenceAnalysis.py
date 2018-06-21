@@ -35,7 +35,9 @@ def detectSpike(data, interval = 20, stDev_threshold = 1.5):
 		curr_ylist = extra_data[i+1] #references the corresponding y values
 
 		avg = np.mean(curr_ylist)
+		localAvgs.append(avg)
 		stDev = np.std(curr_ylist)
+		localSTDs.append(stDev)
 
 		for j in range(0, len(curr_xlist)):
 			orig_index = xvals.index(curr_xlist[j])
@@ -46,22 +48,23 @@ def detectSpike(data, interval = 20, stDev_threshold = 1.5):
 
 	localSTDev = 0
 	localAVG = 0
-	for i in range(0,len(xvals)):
+	for i in range(0,len(new_xvals)):
+		orig_index = xvals.index(new_xvals[i])
+		before = orig_index-mid_interval
+		after = orig_index+mid_interval
 
-		before = i-mid_interval
-		after = i+mid_interval
-
-		std_subset = new_yvals[before:i]
-		mean_subset = new_yvals[before:i]
+		std_subset = yvals[before:i]
+		mean_subset = yvals[before:i]
 		localAVG = np.mean(mean_subset)
 		localAvgs.append(localAVG)
 		localSTDev = np.std(std_subset)
 		localSTDs.append(localSTDev)
 
-		if (new_yvals[i] - localAVG > localSTDev * stDev_threshold):
+		if (yvals[orig_index] - localAVG > localSTDev * stDev_threshold):
 			#print("Spike detected at x = " + str(xvals[i]))
 			#print("\n" + "Index: " + str(i) + " y value: " + str(yvals[i]) + ", local mean: " + str(localAVG) + ", local std: " + str(localSTDev) + "\n")
-			spikeIndices.add(i)
+
+			spikeIndices.add(orig_index)
 
 	return (spikeIndices, localAvgs, localSTDs)
 
