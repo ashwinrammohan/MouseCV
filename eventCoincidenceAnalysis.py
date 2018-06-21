@@ -4,11 +4,12 @@ from matplotlib import pyplot as plt
 from hdf5manager import *
 
 class FixedQueue:
-	def __init__(self, size, values=None):
-		if values != None and len(values) == size:
+	def __init__(self, size, values=[]):
+		assert(size > 0), "Queue size must be more than 0"
+		if len(values) == size:
 			self.values = values
 		else:
-			self.values = [0] * size
+			self.values = [0.0] * size
 
 		self.size = size
 		self.head = 0
@@ -32,34 +33,41 @@ def detectSpike(data, interval = 20, stDev_threshold = 1.5, derivative_threshold
 	size = len(data)
 	spikeIndices = set()
 	
-	mid_interval = interval#int(interval/2)
+	pre_interval = interval
+	post_interval = 0
 
-	front_avg = np.mean(data[:mid_interval])
-	front_dev = np.std(data[:mid_interval])
-	back_avg = np.mean(data[-mid_interval:])
-	back_dev = np.std(data[-mid_interval:])
+	front_avg = np.mean(data[:pre_interval])
+	front_dev = np.std(data[:pre_interval])
 
-	for i in range(mid_interval):
+	if post_interval != 0:
+		back_avg = np.mean(data[-post_interval:])
+		back_dev = np.std(data[-post_interval:])
+
+	for i in range(pre_interval):
 		if (data[i] - front_avg > front_dev * stDev_threshold):
 			print ("Spike detected at x = " + str(i))
 			spikeIndices.add(i)
 
-	for i in range(size - mid_interval, size):
+	for i in range(size - post_interval, size):
 		if (data[i] - back_avg > back_dev * stDev_threshold):
 			print ("Spike detected at x = " + str(i))
 			spikeIndices.add(i)
 
-	localAvgs = [0] * mid_interval
-	localSTDs = [0] * mid_interval
-	for i in range(mid_interval, size):
+	localAvgs = [0] * pre_interval
+	localSTDs = [0] * pre_interval
 
-		before = i-mid_interval
-		after = i+mid_interval
+	meanQueue = FixedQueue(pre_interval, data[:pre_interval])
 
-		std_subset = data[before:i]
-		mean_subset = data[before:i]
-		localAVG = np.mean(mean_subset)
+	for i in range(pre_interval, size - post_interval):
+
+		before = i-pre_interval
+		after = i+post_interval
+
+		std_subset = data[before:after]
 		localSTDev = np.std(std_subset)
+
+		meanQueue.add_value(data[i])
+		localAVG = meanQueue.sum / meanQueue.size
 
 		localAvgs.append(localAVG)
 		localSTDs.append(localSTDev)
@@ -67,19 +75,23 @@ def detectSpike(data, interval = 20, stDev_threshold = 1.5, derivative_threshold
 		if (i < size -1):
 			derivative = (data[i+1]-data[i-1])/2
 
-		if (data[i] - localAVG > localSTDev * stDev_threshold) | (derivative > derivative_threshold):
+		if (data[i] - localAVG > localSTDev * stDev_threshold) or (derivative > derivative_threshold):
 			print("Spike detected at x = " + str(i))
 			spikeIndices.add(i)
+
+	localAvgs.extend([0] * post_interval)
+	localSTDs.extend([0] * post_interval)
+
 	return (spikeIndices, localAvgs, localSTDs)
 
 data = hdf5manager("P2_timecourses.hdf5").load()
-vals = data['brain'][0][:2000]
-print("Global Average: " + str(np.mean(vals)))
-print("Global Stdev: " + str(np.std(vals)))
+print("brain data below...")
+ys = data['brain'][0][:2000]
+print("Global Average: " + str(np.mean(ys)))
+print("Global Stdev: " + str(np.std(ys)))
 
 xs = list(np.linspace(0,2000,2000))
-
-spikes, avgs, stdevs = detectSpike(vals,100,3)
+spikes, avgs, stdevs = detectSpike(ys,100,3)
 
 legend = ("Data", "Avgs", "Stdevs")
 plt.plot(xs,vals)
@@ -94,12 +106,7 @@ for i in spikes:
 
 plt.show()
 
-queueObj = FixedQueue(10)
-print(queueObj)
 
-answer = 0
-while answer != -1:
-	answer = int(input(">>> "))
-	queueObj.add_value(answer)
-	print(queueObj.sum())
-
+'''
+xs = [1,2,3,4,5,6,7,8,9,10,11,12]
+ys = [1,4,9,16,25,36,49,64,81,100,121,144]
