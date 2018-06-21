@@ -2,6 +2,11 @@ import numpy as np
 import matplotlib
 from matplotlib import pyplot as plt
 from hdf5manager import *
+import cv2 as cv
+import sys
+sys.path.append("..\\pyWholeBrain")
+from timecourseAnalysis import butterworth
+
 
 class FixedQueue:
 	def __init__(self, size, values=[]):
@@ -84,17 +89,33 @@ def detectSpike(data, interval = 20, stDev_threshold = 1.5, derivative_threshold
 
 	return (spikeIndices, localAvgs, localSTDs)
 
+high_limit = 0.5
+low_limit = 0.03
 data = hdf5manager("P2_timecourses.hdf5").load()
 print("brain data below...")
 vals = data['brain'][0][:2000]
+
+
+
 print("Global Average: " + str(np.mean(vals)))
 print("Global Stdev: " + str(np.std(vals)))
 
 xs = list(np.linspace(0,2000,2000))
-spikes, avgs, stdevs = detectSpike(vals,100,3)
 
-legend = ("Data", "Avgs", "Stdevs")
+while (True):
+	print(high_limit)
+	plt.clf()
+	cv.waitKey(0)
+	butter_vals = butterworth(vals, high = high_limit, low = None)
+	plt.plot(xs,vals)
+	plt.plot(xs,butter_vals)
+	high_limit -= 0.1
+
+spikes, avgs, stdevs = detectSpike(butter_vals,100,3)
+
+legend = ("Data","Butterworth Data", "Avgs", "Stdevs")
 plt.plot(xs,vals)
+plt.plot(xs,butter_vals)
 plt.plot(xs,avgs)
 plt.plot(xs, stdevs)
 plt.legend(legend)
@@ -102,6 +123,5 @@ plt.legend(legend)
 for i in spikes:
 	#print("(" + str(xs[i]) + "," + str(ys[i]) + ")" + "\n")
 	plt.axvline(x = xs[i], color = 'red')
-
 
 plt.show()
