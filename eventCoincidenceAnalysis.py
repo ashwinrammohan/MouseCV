@@ -68,6 +68,8 @@ def detectSpike(data, interval = 20, stDev_threshold = 1.5):
 			print("Spike detected at x = " + str(i))
 			spikeIndices.add(i)
 
+			spikeIndices.add(orig_index)
+
 	return (spikeIndices, localAvgs, localSTDs)
 
 '''data = hdf5manager("P2_timecourses.hdf5").load()
