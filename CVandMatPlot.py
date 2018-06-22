@@ -41,6 +41,7 @@ def drawMatplotFrame(figure, frameIndex, data):
 	parseAndDrawHDF5(figure, data, frameIndex)
 	drawFigureForRange(figure, data, frameIndex, 15)
 
+last_index = 0
 #Draws a graph showing position vector magnitude over time for each of the limbs (each limb's
 #data is shown in the color assigned to it in the loadLimb method). Because each limb's data
 #spans multiple frames, the graph shows "rolling data" where for each frame, a certain interval
@@ -49,42 +50,48 @@ def drawMatplotFrame(figure, frameIndex, data):
 #for where the start, duration, and end of events in the vector magnitude occur. Vertical lines
 #are drawn in red (blue) for the start and end of each event, and the spikes in between are shown
 #by yellow lines.
-def drawFigureForRange(figure, data, frame, range):
+def drawFigureForRange(figure, data, frame, frame_range):
+	global last_index
 	sub = figure.add_subplot(212) # creates a subplot (lower of the 2 veritcal rows)
 
 	for limbKey in data.keys(): # iterate over each limb
 		limb = data[limbKey]
-		bottom = max(0, frame - range) # `range` frames before the current frame, or 0th frame
-		top = min(len(limb["magnitude"]), frame + range) # `range` frames after the current frame, or the last frame
+		bottom = max(0, frame - frame_range) # `frame_range` frames before the current frame, or 0th frame
+		top = min(len(limb["magnitude"]), frame + frame_range) # `frame_range` frames after the current frame, or the last frame
 		sub.plot(np.arange(bottom, top), limb["butter"][bottom:top], '-', color=limb["color"]) # plot the butterworth processed data
-		for i in limb["start_spikes"]: # draw start of each activity red
-			if i < frame - range:
-				continue
-			if i > frame + range:
-				break
-			sub.axvline(x = i - frame, color = 'red')
 
-		for i in limb["mid_spikes"]: # draw duration of each activity as mostly transparent
-			if i < frame - range:
-				continue
-			if i > frame + range:
-				break
-			sub.axvline(x = i - frame, color = (1,1,0,0.3))
+		transparent_color = limb["color"]+(0.15,)
 
-		for i in limb["end_spikes"]: # draw end of each activity red
-			if i < frame - range:
+		for spike in limb["start_spikes"]: # draw start of each activity red
+			if spike < frame - frame_range:
 				continue
-			if i > frame + range:
+			if spike > frame + frame_range:
 				break
-			sub.axvline(x = i - frame, color = 'red')
+			sub.axvline(x = spike, color = limb["color"])
+
+		for i in range(last_index, limb["mid_spikes_count"]): # draw duration of each activity as mostly transparent
+			spike = limb["mid_spikes"][i]
+			if spike < frame - frame_range:
+				last_index = i
+				continue
+			if spike > frame + frame_range:
+				break
+			sub.axvline(x = spike, color = transparent_color)
+
+		for spike in limb["end_spikes"]: # draw end of each activity red
+			if spike < frame - frame_range:
+				continue
+			if spike > frame + frame_range:
+				break
+			sub.axvline(x = spike, color = limb["color"])
 
 	sub.axvline(x=frame, color="red") #really a blue line b/c of OpenCV - Matplotlib changes in color formatting
 
 	#sets axes labels and limits for the subplot
 	sub.set_xlabel("Frame #")
 	sub.set_ylabel("Magnitude")
-	sub.set_xlim(frame - range, frame + range)
-	sub.set_ylim(0, 10)
+	sub.set_xlim(frame - frame_range, frame + frame_range)
+	sub.set_ylim(0, 2.25)
 
 # Gets a numpy array of pixel values from a matplotlib figure
 def arrayFromFigure(figure):
@@ -105,13 +112,14 @@ def loadHDF5(file_name):
 		if not(limbName in data.keys()): # check if this kv pair actually exists
 			return
 
-		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[limbName]["magnitude"], -0.05, second_deriv_batch=10, high_pass = 0.3)
+		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[limbName]["magnitude"], -0.1, second_deriv_batch=8, high_pass = 0.75, peak_height=0.25)
 		data[limbName]["pos"] = pos # position of the vector for graphing purposes
 		data[limbName]["color"] = color # color of the vector when graphing
-		data[limbName]["start_spikes"] = start_spikes
-		data[limbName]["mid_spikes"] = mid_spikes
+		data[limbName]["start_spikes"] = start_spikes[::-1]
+		data[limbName]["mid_spikes"] = mid_spikes[::-1]
 		data[limbName]["end_spikes"] = end_spikes
 		data[limbName]["butter"] = vals
+		data[limbName]["mid_spikes_count"] = len(mid_spikes)
 
 	loadLimb("footFL", (0,1), (0, 0, 1))
 	loadLimb("footFR", (0,-1), (0, 1, 0))
@@ -119,6 +127,8 @@ def loadHDF5(file_name):
 	loadLimb("footBR", (-1,-1), (1, 0, 0))
 	loadLimb("head", (1,0), (1, 0.3, 1))
 	loadLimb("tail", (-2,0), (1, 1, 0.3))
+
+	print()
 
 	return data
 
