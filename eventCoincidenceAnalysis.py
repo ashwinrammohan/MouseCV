@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 from hdf5manager import *
 import cv2 as cv
 import sys
-sys.path.append("..\\pyWholeBrain")
+sys.path.append("/Users/andrew/Code Github/pyWholeBrain")
 from timecourseAnalysis import butterworth
 
 
@@ -55,12 +55,12 @@ def detectSpike(data, interval = 20, stDev_threshold = 1.5, derivative_threshold
 
 	for i in range(pre_interval):
 		if (data[i] - front_avg > front_dev * stDev_threshold):
-			print ("Spike detected at x = " + str(i))
+			#print ("Spike detected at x = " + str(i))
 			spikeIndices.append(i)
 
 	for i in range(size - post_interval, size):
 		if (data[i] - back_avg > back_dev * stDev_threshold):
-			print ("Spike detected at x = " + str(i))
+			#print ("Spike detected at x = " + str(i))
 			spikeIndices.append(i)
 
 	localAvgs = [0] * pre_interval
@@ -91,7 +91,7 @@ def detectSpike(data, interval = 20, stDev_threshold = 1.5, derivative_threshold
 		derivative_check = data[i] > data[i-1]
 		derivative_stdev_check = abs(newSTDev - oldSTDev) > min
 		if (init_check and derivative_check and derivative_stdev_check):
-			print("Spike detected at x = " + str(i) + " y value = " + str(data[i]) + " local mean = " + str(localAVG) + " local stdev = " + str(localSTDev))
+			#print("Spike detected at x = " + str(i) + " y value = " + str(data[i]) + " local mean = " + str(localAVG) + " local stdev = " + str(localSTDev))
 			spikeIndices.append(i)
 		oldSTDev = newSTDev
 
@@ -104,12 +104,12 @@ high_limit = 0.5
 low_limit = 0.01
 data = hdf5manager("P2_timecourses.hdf5").load()
 print("brain data below...")
-vals = data['brain'][0][5000:10000]
+vals = data['brain'][0][:2000]
 
 print("Global Average: " + str(np.mean(vals)))
 print("Global Stdev: " + str(np.std(vals)))
 
-xs = list(np.linspace(0,len(vals),len(vals)))
+xs = list(np.linspace(0,2000,2000))
 stDev_threshold = 0.5
 butter_vals = butterworth(vals, high = high_limit, low = None)
 legend = ("Butterworth Data", "Avgs", "Stdevs")

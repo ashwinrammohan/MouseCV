@@ -29,15 +29,38 @@ class FixedQueue:
 		if self.head >= self.size:
 			self.head = 0
 
-#Method for detecting spikes in data given certain thresholds
-#data is the y values
-#stDev_threshold - if a y-value is greater than the mean by this threshold * stDev, that point is declared a spike
-#derivative_threshold - if the derivative at a point is greater than this, then that point is declared a spike
-def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start = 0):
+def loadHDF5(file_name):
+	data = hdf5manager("Assets/" + file_name + ".hdf5").load()
+
+	def loadLimb(limbName, pos, color):
+		if not(limbName in data.keys()):
+			return
+
+		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[limbName]["magnitude"], -0.3)
+		data[limbName]["pos"] = pos
+		data[limbName]["color"] = color
+		data[limbName]["start_spikes"] = start_spikes
+		data[limbName]["mid_spikes"] = mid_spikes
+		data[limbName]["end_spikes"] = end_spikes
+
+	loadLimb("footFL", (0,1), (1, 0, 0))
+	loadLimb("footFR", (0,-1), (0, 1, 0))
+	loadLimb("footBL", (-1,1), (1, 0.7, 0.3))
+	loadLimb("footBR", (-1,-1), (0, 0, 1))
+	loadLimb("head", (1,0), (1, 0.3, 1))
+	loadLimb("tail", (-2,0), (0.3, 1, 1))
+	return data
+
+def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start = 0, peak_height = 0, high_pass = 0.5):
+	data = butterworth(data, high = high_pass, low = None)
+
 	past_deriv = 0
 	past_derivs = FixedQueue(second_deriv_batch)
 	future_dervis = FixedQueue(second_deriv_batch)
 	spikes = []
+	if (peak_height == 0):
+		peak_height = np.std(data)/3
+		print("Min peak height: " + str(peak_height))
 
 	# initialize batches
 	for i in range(1, second_deriv_batch+1):
@@ -53,7 +76,9 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 	for i in range(second_deriv_batch+1, len(data) - second_deriv_batch-1):
 		deriv = data[i] - data[i-1]
 
-		if (deriv < 0 and past_deriv >= 0) and ((future_dervis.sum - past_derivs.sum) < second_deriv_thresh):
+		deriv_test = (deriv < 0 and past_deriv >= 0)
+		second_deriv_test = ((future_dervis.sum - past_derivs.sum) < second_deriv_thresh)
+		if deriv_test and second_deriv_test:
 			spikes.append(i)
 
 		past_deriv = deriv
@@ -64,8 +89,10 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 
 	# find activity duration
 	i = 0
-	new_spikes = []
-	for spike in spikes:
+	start_spikes = []
+	mid_spikes = []
+	for j in range(len(spikes)-1, -1, -1):
+		spike = spikes[j]
 		i = spike - 1
 		done = False
 		while not(done):
@@ -73,31 +100,51 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 			if (deriv <= deriv_start):
 				done = True
 			else:
-				new_spikes.append(i)
 				i -= 1
 				if (i < 1):
 					done = True
 
-	spikes.extend(new_spikes)
-	return spikes
+		if data[spike] - data[i] < peak_height:
+			del spikes[j]
+		else:
+			start_spikes.append(i)
+			for h in range(i+1, spike):
+				mid_spikes.append(h)
 
-high_limit = 0.5
-low_limit = 0.03
-data = hdf5manager("P2_timecourses.hdf5").load()
-vals = butterworth(data['brain'][0][:2000], high = high_limit, low = None)
-xs = list(np.linspace(0,2000,2000))
+	return (start_spikes, mid_spikes, spikes, data)
 
-spikes = detectSpikes(vals, -0.2)
+def test_ROI_timecourse():
+	data = hdf5manager("P2_timecourses.hdf5").load()
 
-legend = ("Data","Butterworth Data", "Avgs", "Stdevs")
-plt.plot(xs,vals)
-#plt.plot(xs,butter_vals)
-#plt.plot(xs,avgs)
-#plt.plot(xs, stdevs)
-plt.legend(legend)
+	for i in range(10):
+		plt.figure("ROI " + str(i))
+		xs = list(np.linspace(0,2000,2000))
+		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data['brain'][i][:2000], -0.3)
 
-for i in spikes:
-	#print("(" + str(xs[i]) + "," + str(ys[i]) + ")" + "\n")
-	plt.axvline(x = xs[i], color = 'red')
+		plt.plot(xs,vals)
+		for i in start_spikes:
+			plt.axvline(x = xs[i], color = 'red')
+		for i in mid_spikes:
+			plt.axvline(x = xs[i], color = (1,1,0,0.3))
+		for i in end_spikes:
+			plt.axvline(x = xs[i], color = 'red')
 
-plt.show()
+	plt.show()
+
+def test_amplitude():
+	data = loadHDF5("mouse_vectors")
+
+	for limbKey in data.keys():
+		plt.figure("Limb: " + limbKey)
+		xs = list(np.linspace(0,len(data[limbKey]["magnitude"]),len(data[limbKey]["magnitude"])))
+		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[limbKey]["magnitude"], -0.05, second_deriv_batch=10, high_pass = 0.3)
+
+		plt.plot(xs,vals)
+		for i in start_spikes:
+			plt.axvline(x = i, color = 'red')
+		for i in mid_spikes:
+			plt.axvline(x = i, color = (1,1,0,0.3))
+		for i in end_spikes:
+			plt.axvline(x = i, color = 'red')
+
+	plt.show()
