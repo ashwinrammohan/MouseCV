@@ -66,6 +66,8 @@ def drawFigureForRange(figure, data, frame, range):
 			sub.axvline(x = i - frame, color = 'red')
 
 	sub.axvline(x=frame, color="red")
+
+	#sets axes labels and limits for the subplot
 	sub.set_xlabel("Frame #")
 	sub.set_ylabel("Magnitude")
 	sub.set_xlim(frame - range, frame + range)
@@ -110,6 +112,7 @@ def parseAndDrawHDF5(figure, data, frameIndex):
 		sub.arrow(limb["pos"][0], limb["pos"][1], limb["dx"][frameIndex], limb["dy"][frameIndex], color=limb["color"])
 	#sub.quiver(x0s, y0s, dxs, dys, angles='xy', scale_units='xy', scale=1)
 
+	#Sets axes labels and limits for the subplot
 	sub.set_xlabel('x')
 	sub.set_ylabel('y')
 	sub.set_xlim(-5,5)
