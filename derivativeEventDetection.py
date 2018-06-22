@@ -4,7 +4,11 @@ from matplotlib import pyplot as plt
 from hdf5manager import *
 import cv2 as cv
 import sys
-sys.path.append("/Users/andrew/Code Github/pyWholeBrain")
+
+path_file = open("path.txt", "r")
+sys.path.append(path_file.read())
+path_file.close()
+
 from timecourseAnalysis import butterworth
 
 # This class is an extremely efficient queue with a fixed size. It keeps track of the
@@ -165,3 +169,5 @@ def test_amplitude():
 			plt.axvline(x = i, color = 'red')
 
 	plt.show()
+
+test_ROI_timecourse()

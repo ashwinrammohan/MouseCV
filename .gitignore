@@ -2,6 +2,7 @@
 *.h264
 *.mp4
 *.avi
+path.txt
 
 # gitignore from interwebs
 # Byte-compiled / optimized / DLL files
