@@ -9,7 +9,8 @@ import math
 import datetime
 from derivativeEventDetection import *
 
-
+# Loads an avi video as a numpy array. The video must be in the Assets folder.
+# Video is assumed to be black and white.
 def load_avi(vid_name):
 	cap = cv.VideoCapture("Assets/" + vid_name + ".avi")
 	frameCount = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
@@ -27,12 +28,15 @@ def load_avi(vid_name):
 		if not(result[0]):
 			break
 
-		vid[fc] = result[1][:,:,0]
+		vid[fc] = result[1][:,:,0] # only the red channel is taken, because the video should be black and white
 		fc += 1
 
 	cap.release()
 	return vid
 
+# All matplot graph drawing should be done in this function
+# Draw onto the figure object, not plot, or else the graph cant 
+# be copied into the numpy array
 def drawMatplotFrame(figure, frameIndex, data):
 	parseAndDrawHDF5(figure, data, frameIndex)
 	drawFigureForRange(figure, data, frameIndex, 15)
@@ -46,28 +50,28 @@ def drawMatplotFrame(figure, frameIndex, data):
 #are drawn in red (blue) for the start and end of each event, and the spikes in between are shown
 #by yellow lines.
 def drawFigureForRange(figure, data, frame, range):
-	sub = figure.add_subplot(212)
+	sub = figure.add_subplot(212) # creates a subplot (lower of the 2 veritcal rows)
 
-	for limbKey in data.keys():
+	for limbKey in data.keys(): # iterate over each limb
 		limb = data[limbKey]
-		bottom = max(0, frame - range)
-		top = min(len(limb["magnitude"]), frame + range)
-		sub.plot(np.arange(bottom, top), limb["magnitude"][bottom:top], '-', color=limb["color"])
-		for i in limb["start_spikes"]:
+		bottom = max(0, frame - range) # `range` frames before the current frame, or 0th frame
+		top = min(len(limb["magnitude"]), frame + range) # `range` frames after the current frame, or the last frame
+		sub.plot(np.arange(bottom, top), limb["butter"][bottom:top], '-', color=limb["color"]) # plot the butterworth processed data
+		for i in limb["start_spikes"]: # draw start of each activity red
 			if i < frame - range:
 				continue
 			if i > frame + range:
 				break
 			sub.axvline(x = i - frame, color = 'red')
 
-		for i in limb["mid_spikes"]:
+		for i in limb["mid_spikes"]: # draw duration of each activity as mostly transparent
 			if i < frame - range:
 				continue
 			if i > frame + range:
 				break
 			sub.axvline(x = i - frame, color = (1,1,0,0.3))
 
-		for i in limb["end_spikes"]:
+		for i in limb["end_spikes"]: # draw end of each activity red
 			if i < frame - range:
 				continue
 			if i > frame + range:
@@ -82,35 +86,39 @@ def drawFigureForRange(figure, data, frame, range):
 	sub.set_xlim(frame - range, frame + range)
 	sub.set_ylim(0, 10)
 
-
+# Gets a numpy array of pixel values from a matplotlib figure
 def arrayFromFigure(figure):
 	fig.canvas.draw()
-	width, height = fig.get_size_inches() * fig.get_dpi()
-	image = np.frombuffer(fig.canvas.tostring_rgb(), dtype='uint8')
-	image = image.reshape(int(height), int(width), 3)
-	#image = image[...,::-1] #switch red and blue channels because matplot is RGB but CV2 is BGR
+	width, height = fig.get_size_inches() * fig.get_dpi() # get size of figure
+	image = np.frombuffer(fig.canvas.tostring_rgb(), dtype='uint8') # get data (its returned as a flat numpy array)
+	image = image.reshape(int(height), int(width), 3) # reshape to the correct shape
+	image = image[...,::-1] #switch red and blue channels because matplot is RGB but CV2 is BGR
 	return image
 
+# Loads an HDF5 file with an assumed structure. The dictionary produced must have up to 6 kv pairs,
+# with the names footFL, footFR, footBL, footBR, head, tail. Not all kv pairs need to exist.
+# The HDF5 file must be stored in the Assets folder.
 def loadHDF5(file_name):
 	data = hdf5manager("Assets/" + file_name + ".hdf5").load()
 
 	def loadLimb(limbName, pos, color):
-		if not(limbName in data.keys()):
+		if not(limbName in data.keys()): # check if this kv pair actually exists
 			return
 
 		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[limbName]["magnitude"], -0.05, second_deriv_batch=10, high_pass = 0.3)
-		data[limbName]["pos"] = pos
-		data[limbName]["color"] = color
+		data[limbName]["pos"] = pos # position of the vector for graphing purposes
+		data[limbName]["color"] = color # color of the vector when graphing
 		data[limbName]["start_spikes"] = start_spikes
 		data[limbName]["mid_spikes"] = mid_spikes
 		data[limbName]["end_spikes"] = end_spikes
+		data[limbName]["butter"] = vals
 
-	loadLimb("footFL", (0,1), (1, 0, 0))
+	loadLimb("footFL", (0,1), (0, 0, 1))
 	loadLimb("footFR", (0,-1), (0, 1, 0))
-	loadLimb("footBL", (-1,1), (1, 0.7, 0.3))
-	loadLimb("footBR", (-1,-1), (0, 0, 1))
+	loadLimb("footBL", (-1,1), (0.3, 0.7, 1))
+	loadLimb("footBR", (-1,-1), (1, 0, 0))
 	loadLimb("head", (1,0), (1, 0.3, 1))
-	loadLimb("tail", (-2,0), (0.3, 1, 1))
+	loadLimb("tail", (-2,0), (1, 1, 0.3))
 
 	return data
 
@@ -122,8 +130,7 @@ def parseAndDrawHDF5(figure, data, frameIndex):
 	sub = figure.add_subplot(211)
 	for limbKey in data.keys():
 		limb = data[limbKey]
-		sub.arrow(limb["pos"][0], limb["pos"][1], limb["dx"][frameIndex], limb["dy"][frameIndex], color=limb["color"])
-	#sub.quiver(x0s, y0s, dxs, dys, angles='xy', scale_units='xy', scale=1)
+		sub.arrow(limb["pos"][0], limb["pos"][1], limb["dx"][frameIndex], limb["dy"][frameIndex], color=limb["color"]) # draw the vector for each limbs' motion
 
 	#Sets axes labels and limits for the subplot
 	sub.set_xlabel('x')
@@ -143,19 +150,19 @@ fig = plt.figure(figsize=(4,6))
 
 for i, frame in enumerate(new_movie[1:]):
 	sourceShape = source_movie.shape
-	frame[:sourceShape[1],:sourceShape[2],0] = source_movie[i]
+	frame[:sourceShape[1],:sourceShape[2],0] = source_movie[i] # copy the source movie in black and white
 	frame[:sourceShape[1],:sourceShape[2],1] = source_movie[i]
 	frame[:sourceShape[1],:sourceShape[2],2] = source_movie[i]
 
-	drawMatplotFrame(fig, i, data)
-	matplotArray = arrayFromFigure(fig)
-	matplotShape = matplotArray.shape
+	drawMatplotFrame(fig, i, data) # draw graphs onto the figure
+	matplotArray = arrayFromFigure(fig) # get the pixel data from the figure
+	matplotShape = matplotArray.shape # get shape of pixel data
 
-	xstart = frame.shape[1] - matplotShape[1]
+	xstart = frame.shape[1] - matplotShape[1] # calculate where matplot should go
 	xend = frame.shape[1]
-	frame[:matplotShape[0], xstart:xend] = matplotArray
+	frame[:matplotShape[0], xstart:xend] = matplotArray # copy in matplotlib data
 
-	fig.clear()
+	fig.clear() # clear the figure so it can be graphed again
 	print("Frame " + str(i) + " done.")
 
 print("Done! Saving to avi...")
