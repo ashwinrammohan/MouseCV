@@ -132,6 +132,6 @@ while (True):
 			plt.axvline(x = spikes[i], color = (1,1,0,0.3)) #yellow
 
 	plt.show()
-	stDev_threshold -= 0.25
+	stDev_threshold /= 2
 	if (cv.waitKey(0) == ord("q")):
 		break
