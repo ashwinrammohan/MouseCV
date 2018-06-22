@@ -9,6 +9,7 @@ import math
 import datetime
 from derivativeEventDetection import *
 
+
 def load_avi(vid_name):
 	cap = cv.VideoCapture("Assets/" + vid_name + ".avi")
 	frameCount = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
@@ -36,6 +37,14 @@ def drawMatplotFrame(figure, frameIndex, data):
 	parseAndDrawHDF5(figure, data, frameIndex)
 	drawFigureForRange(figure, data, frameIndex, 15)
 
+#Draws a graph showing position vector magnitude over time for each of the limbs (each limb's
+#data is shown in the color assigned to it in the loadLimb method). Because each limb's data
+#spans multiple frames, the graph shows "rolling data" where for each frame, a certain interval
+#before and after it is shown. A vertical red(blue) line at x = current frame is plotted so that it is
+#clear to the viewer where the current frame's motion is being graphed. Each limb also contains data
+#for where the start, duration, and end of events in the vector magnitude occur. Vertical lines
+#are drawn in red (blue) for the start and end of each event, and the spikes in between are shown
+#by yellow lines.
 def drawFigureForRange(figure, data, frame, range):
 	sub = figure.add_subplot(212)
 
@@ -65,7 +74,7 @@ def drawFigureForRange(figure, data, frame, range):
 				break
 			sub.axvline(x = i - frame, color = 'red')
 
-	sub.axvline(x=frame, color="red")
+	sub.axvline(x=frame, color="red") #really a blue line b/c of OpenCV - Matplotlib changes in color formatting
 
 	#sets axes labels and limits for the subplot
 	sub.set_xlabel("Frame #")
@@ -105,6 +114,10 @@ def loadHDF5(file_name):
 
 	return data
 
+#Parses the .hdf5 file for the position and velocity vectors for each limb
+#Then, this method draws arrows (vectors) on the subplots with the head of the vectors starting at
+#the limb's designated position and the tails of the vectors corresponding to the direction of the
+#limb's motion.
 def parseAndDrawHDF5(figure, data, frameIndex):
 	sub = figure.add_subplot(211)
 	for limbKey in data.keys():
