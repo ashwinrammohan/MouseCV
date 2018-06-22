@@ -49,8 +49,6 @@ def detectSpike(data, interval = 20, stDev_threshold = 1.5, derivative_threshold
 	print("FRONT AVERAGE: " + str(front_avg))
 	print("FRONT STDEV: " + str(front_dev))
 
-
-
 	if post_interval != 0:
 		back_avg = np.mean(data[-post_interval:])
 		back_dev = np.std(data[-post_interval:])
@@ -91,7 +89,7 @@ def detectSpike(data, interval = 20, stDev_threshold = 1.5, derivative_threshold
 
 		init_check = (data[i] - localAVG > localSTDev * stDev_threshold) or (derivative > derivative_threshold)
 		derivative_check = data[i] > data[i-1]
-		derivative_stdev_check = True#abs(newSTDev - oldSTDev) > min
+		derivative_stdev_check = abs(newSTDev - oldSTDev) > min
 		if (init_check and derivative_check and derivative_stdev_check):
 			print("Spike detected at x = " + str(i) + " y value = " + str(data[i]) + " local mean = " + str(localAVG) + " local stdev = " + str(localSTDev))
 			spikeIndices.append(i)
@@ -107,8 +105,6 @@ low_limit = 0.01
 data = hdf5manager("P2_timecourses.hdf5").load()
 print("brain data below...")
 vals = data['brain'][0][5000:10000]
-
-
 
 print("Global Average: " + str(np.mean(vals)))
 print("Global Stdev: " + str(np.std(vals)))
@@ -139,4 +135,3 @@ while (True):
 	stDev_threshold -= 0.25
 	if (cv.waitKey(0) == ord("q")):
 		break
-
