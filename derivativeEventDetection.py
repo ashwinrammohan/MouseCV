@@ -170,4 +170,5 @@ def test_amplitude():
 
 	plt.show()
 
-test_ROI_timecourse()
+
+test_amplitude()

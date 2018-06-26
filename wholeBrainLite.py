@@ -36,86 +36,78 @@ import time
 import _thread
 import multiprocessing
 
-final_avgimg = None
-total_frame_count = 0
-total_threads = 0
-wanted_threads = 0
-
-def printData(data, frame_count):
-	global final_avgimg, total_frame_count, total_threads
-	if (final_avgimg == None):
-		final_avgimg = data
-		total_frame_count = frame_count
-	else:
-		denom = total_frame_count + frame_count
-		final_avgimg = frame_count / denom * data + total_frame_count / denom * final_avgimg
-		total_frame_count += frame_count
-
-	total_threads += 1
-	print(total_threads)
-	if total_threads >= wanted_threads:
-		print("Average done!")
-
-		if args['avg'] is True:
-			print('Writing average image to', avgpath)
-			final_avgimg = wb.rescaleMovie(final_avgimg).astype('uint8')
-			cv2.imwrite(avgpath, final_avgimg)
-
-		# Use average image to calculate dfof and write NAME_dfof.avi
-		if args['grayscale'] is True:
-			cmap = None
+class ThreadManager:
+	def __init__(self, thread_method, thread_callback, finished_callback, threads=0):
+		if threads == 0:
+			self.wanted_threads = multiprocessing.cpu_count()
 		else:
-			cmap = cv2.COLORMAP_JET
+			self.wanted_threads = threads
 
-		rollingDFOF(pathlist, final_avgimg, dfofpath, speed=speed, roipath=roipath,
-			resize_factor=1/downsample, rotate=args['rotate'], cmap=cmap, 
-			tcpath=tcpath)
+		self.finished_threads = 0
 
-def rollingAverage(pathlist, byframe=True):
-	global wanted_threads
-	pathlist = pathlist[::-1]
+		self.thread_method = thread_method
+		self.thread_callback = thread_callback
+		self.finished_callback = finished_callback
 
-	threads = multiprocessing.cpu_count() #just a rule of thumb, best number of threads is generally cores times 2
-	wanted_threads = threads
+	def callback(self, data):
+		self.thread_callback(data, self)
+		self.finished_threads += 1
+		print(str(self.finished_threads) + " threads completed \n")
+		if self.finished_threads >= self.wanted_threads:
+			self.finished_callback(data)
 
-	pathsPerThread = int(len(pathlist) / threads)
-	paths = len(pathlist)
-	print("Threads:", threads)
-	print("Files:", len(pathlist))
-	upper = 0
-	for i in range(threads-1):
-		lower = i*pathsPerThread
-		upper = (i+1) * pathsPerThread
-		print("Lower", lower)
-		print("Upper", upper)	
-		_thread.start_new_thread(_rollingAverage, (pathlist[lower:upper], printData, byframe))
+	def run(self, paths, data={}):
+		pathsPerThread = int(len(paths) / self.wanted_threads)
+		print("Threads:", threads)
+		print("Files:", len(pathlist))
 
-	_rollingAverage(pathlist[upper:], printData, byframe, True)
-	print("Main thread ended, holding...")
-	while True:
-		pass
+		upper = 0
+		for i in range(self.wanted_threads-1):
+			subpaths = pathlist[i::self.wanted_threads]
+			cpy = {**data}
+			cpy["index"] = i
+			_thread.start_new_thread(self.thread_method, (subpaths, cpy, self))
 
-def _rollingAverage(pathlist, callback, byframe=True, printing=False):
-	global tiffs_loaded
+		cpy = {**data}
+		cpy["index"] = self.wanted_threads-1
+		subpaths = pathlist[self.wanted_threads-1::self.wanted_threads]
+		self.thread_method(subpaths, {**data}, self)
+
+
+
+
+		
+
+def _rollingAverageAverage(data, manager):
+	avimg = data["avimg"]
+	frame_count = data["frame_count"]
+
+	if (data["final_avgimg"] == None):
+		data["final_avgimg"] = avimg
+		data["total_frame_count"] = frame_count
+	else:
+		denom = data["total_frame_count"] + frame_count
+		data["final_avgimg"] = frame_count / denom * avimg + data["total_frame_count"] / denom * data["final_avgimg"]
+		data["total_frame_count"] += frame_count
+
+
+def _rollingAverage(pathlist, data, manager):
 	'''
 	Calculates rolling average of a series of tiff files summing by one to 
 	save memory.
 	Takes list of paths, returns average in a numpy array
 	'''
-	#print('\nTaking Rolling Average\n-----------------------')
 
 	# Ignores UserWarning tags not ordered by code from tiff files
 	warnings.simplefilter('ignore', UserWarning)
 	file_loadtime = 0
-	tonp_loadtime = 0
 
 	# Open each file and sum all frames
 	for f, path in enumerate(pathlist):
 		
-		#print('Loading tiff file at', path)
-
 		nframes = 0
 		file_loadtime = time.clock()
+
 		with TiffFile(path) as tif:
 			print("TiffFile load time: " + str(time.clock() - file_loadtime) + "\n")
 			print("Loaded file " + path + "\n")
@@ -124,39 +116,26 @@ def _rollingAverage(pathlist, callback, byframe=True, printing=False):
 				# Get sizing information on the first frame of each tiff file
 				shape = tif.pages[0].shape[-2:]
 				nframes = 0
-				#print('\tframe shape:', shape)
 				
 			else:
 				assert tif.pages[0].shape[-2:] == shape, "Frames shapes don't match"
 
-			if byframe: #loop through frame by frame to average
 
-				for i, page in enumerate(tif.pages):
+			for i, page in enumerate(tif.pages):
+				if i == 0:
+					sumimg = page.asarray()
+					nframes += 1
 
-					if i == 0:
-						sumimg = np.zeros(shape)
+				if len(page.shape) > 2:
+					frame = page.asarray()
+					sumimg += frame.sum(axis=0)
+					nframes += frame.shape[0]
 
-					if len(page.shape) > 2:
-						frame = page.asarray()
-						sumimg += frame.sum(axis=0)
-						nframes += frame.shape[0]
-
-					else:
-						tonp_loadtime = time.clock()
-						frame = page.asarray()
-						if (printing):
-							print("File: " + path + " time to np array: " + str(time.clock() - tonp_loadtime) + "\n")
-
-						sumimg += frame
-						nframes += 1
-
-				i += 1 # account for 0th element in n frames
-				#print('\trolling average took', timer() - t0, 'seconds')
-
-			else: #open one file at a time
-				array = tif.asarray()
-				sumimg = array.sum(axis=0)
-				nframes += array.shape[0]
+				else:
+					tonp_loadtime = time.clock()
+					frame = page.asarray()
+					sumimg += frame
+					nframes += 1
 
 			if f == 0:
 				avgimg = sumimg / nframes
@@ -165,26 +144,23 @@ def _rollingAverage(pathlist, callback, byframe=True, printing=False):
 				avgimg = (n*avgimg + sumimg) / (n + nframes) # rolling weighted average
 				n += nframes
 
-			#print('\t%i frames averaged' %n)
-		
-	print("Thread #" + str(total_threads) + " finished \n")
-	callback(avgimg, nframes)
+	print("Thread finished with paths: \n" + pathlist + "\n")
+	data["avgimg"] = avgimg
+	data["frame_count"] = nframes
+	manager.callback(data)
 
+def startDFOF(data):
+	final_avgimg = data["final_avgimg"]
 
-def rollingDFOF(pathlist, average, output, resize_factor=1, codec=None, speed=1, 
-	fps=10, cmap=cv2.COLORMAP_JET, rotate=True, roipath=None, tcpath=None,
-	byframe=True):
+	print("Average done!")
+	print('Writing average image to', avgpath)
 
-	'''
-	Calculates rolling dfof of a series of tiff files one by one to save memory.
-	Takes list of paths and the averaged image, writes .avi file to output.
-	'''
+	final_avgimg = wb.rescaleMovie(final_avgimg).astype('uint8')
+	cv2.imwrite(avgpath, final_avgimg)
 
-	print('\nCalculating Rolling dFoF\n-----------------------')
-
-	# find codec to use if not specified
+		# find codec to use if not specified
 	if codec is None:
-		if output.endswith('.mp4'):
+		if dfofpath.endswith('.mp4'):
 			if os.name is 'posix':
 				codec = 'X264'
 			elif os.name is 'nt':
@@ -200,7 +176,7 @@ def rollingDFOF(pathlist, average, output, resize_factor=1, codec=None, speed=1,
 	
 	# Initialize Parameters
 	resize_factor = 1/resize_factor
-	sz = average.shape
+	sz = final_avgimg.shape
 
 	# if roipath is provided, load it and create mask.
 	# initiate file and storage container for mean timecourses.
@@ -231,15 +207,74 @@ def rollingDFOF(pathlist, average, output, resize_factor=1, codec=None, speed=1,
 	warnings.simplefilter('ignore', UserWarning)
 
 	# Set up resizing factors
-	if rotate:
+	if args['rotate']:
 		sz = (sz[1], sz[0])
-	w = int(sz[0] // resize_factor)
-	h = int(sz[1] // resize_factor)
+	w = int(sz[0] // (1/downsample))
+	h = int(sz[1] // (1/downsample))
 	
 	# initialize movie writer
 	display_speed = fps * speed
 	fourcc = cv2.VideoWriter_fourcc(*codec) 
-	out = cv2.VideoWriter(output, fourcc, display_speed, (h,w), isColor=True)
+	out = cv2.VideoWriter(dfofpath, fourcc, display_speed, (h,w), isColor=True)
+
+	data = {"average":final_avgimg, "logmean":logmean, "out":out, "roipath":roipath, "rotate":rotate, "cmap":cmap, "neededIndex":{"value":0}}
+	dfofThreads = ThreadManager(_rollingDFOFandSTD, _comebineRollingDFOF, dfofFinished)
+	dfofThreads.run(data["pathlist"], data = data)
+
+def rollingAverage(pathlist):
+	threadManager = ThreadManager(_rollingAverage, _rollingAverageAverage, startDFOF)
+	threadManager.run(pathlist, data = {"final_avgimg":None, "total_frame_count":0, "pathlist":pathlist})
+
+
+def _comebineRollingDFOF(data, manager):
+	print("Thread " + str(data["index"]) + " finished, its waitng for its turn")
+	while data["neededIndex"]["value"] < data["index"]:
+		pass
+
+	print("Thread " + str(data["index"]) + " is now writing its data")
+	for frame in data["movie"]:
+		data["out"].write(frame)
+
+	data["neededIndex"]["value"] += 1
+	if data["neededIndex"]["value"] >= manager.wanted_threads:
+		data["neededIndex"]["value"] = 0
+
+	print("Thread " + str(data["neededIndex"]["value"]) + " should now write its data")
+
+def dfofFinished(data):
+	data["out"].release()
+	print("TECHNICALLY WE SHOULD HAVE A VIDEO NOW")
+
+	if data["logmean"]:
+		file_mean = np.concatenate(file_mean)
+		file_std = np.concatenate(file_std)
+		file_min = np.concatenate(file_min)
+		file_max = np.concatenate(file_max)
+		data = {'dfof_mean':file_mean,
+				'dfof_std':file_std,
+				'dfof_min':file_min,
+				'dfof_max':file_max,
+				'exp_mean':mean,
+				'exp_std':std,
+				'cmin':fmin,
+				'cmax':fmax}
+		f_mean.save(data)
+
+def _rollingDFOFandSTD(pathlist, data, manager):
+
+	'''
+	Calculates rolling dfof of a series of tiff files one by one to save memory.
+	Takes list of paths and the averaged image, writes .avi file to output.
+	'''
+
+	average = data["average"]
+	logmean  data["logmean"]
+	out = data["out"]
+	roipath = data["roipath"]
+	cmap = data["cmap"]
+	rotate = data["rotate"]
+	result = None
+	index = 0
 	
 	def writeFrame(frame):
 			
@@ -267,17 +302,16 @@ def rollingDFOF(pathlist, average, output, resize_factor=1, codec=None, speed=1,
 			frame = cv2.applyColorMap(frame.astype('uint8'), cmap)
 		else:
 			frame = np.repeat(frame[:,:,None], 3, axis=2)
-		out.write(frame)
+		result[index] = frame
+		index += 1
 
-	print('Saving dfof video to: ' + output)
+	#print('Saving dfof video to: ' + output)
 
 	# Open each file and sum all frames
 	for f, path in enumerate(pathlist):
-		print('Loading tiff file at', path)
+		print('Loading tiff file at', path, "\n")
 
 		with TiffFile(path) as tif:
-			t0 = timer()
-
 			if logmean:
 				if (tif.pages[0].shape == 2):
 					tc_length = len(tif.pages)
@@ -290,79 +324,49 @@ def rollingDFOF(pathlist, average, output, resize_factor=1, codec=None, speed=1,
 				file_min_tc = np.zeros(tc_length)
 				file_max_tc = np.zeros(tc_length)
 
-			if byframe:
-				for i, page in enumerate(tif.pages):
+			movie_shape = (len(tif.pages),) + tif.pages[0].shape
+			result = np.empty(movie_shape, dtype="uint8")
+			index = 0
+			for i, page in enumerate(tif.pages):
 					
-					if i % 100 == 0:
-						print('\t{0}/{1}'.format(i,len(tif.pages)))
+				if i % 100 == 0:
+					print('\t{0}/{1}'.format(i,len(tif.pages)))
 
-					frame = np.array(page.asarray())
-					frame = np.divide(frame, average)
-					frame -= 1.0
+				frame = page.asarray()
+				frame = np.divide(frame, average)
+				frame -= 1.0
 
-					if logmean and (frame.ndim == 2): 
-						file_timecourse[i] = frame[np.where(roimask == 1)].mean()
-						file_std_tc[i] = frame[np.where(roimask == 1)].std()
-						file_min_tc[i] = frame[np.where(roimask == 1)].min()
-						file_max_tc[i] = frame[np.where(roimask == 1)].max()
+				if logmean and (frame.ndim == 2): 
+					file_timecourse[i] = frame[np.where(roimask == 1)].mean()
+					file_std_tc[i] = frame[np.where(roimask == 1)].std()
+					file_min_tc[i] = frame[np.where(roimask == 1)].min()
+					file_max_tc[i] = frame[np.where(roimask == 1)].max()
 
-					elif logmean and (frame.ndim == 3):
-						masked = wb.getMaskedRegion(frame, roimask)
-						file_timecourse = masked.mean(axis=1)
-						file_std_tc[i] = masked.std(axis=1)
-						file_min_tc[i] = masked.min(axis=1)
-						file_max_tc[i] = masked.max(axis=1)
-						del masked
-
-					
-					# if first frame, calculate scaling parameters
-					if (i == 0) and (f == 0):
-
-						if logmean:
-							mean = file_timecourse[i]
-							std = file_std_tc[i]
-
-						else:
-							mean = frame.mean()
-							std = frame.std()
-						
-						fmin = mean - 3 * std
-						fmax = mean + 7 * std
-						fslope = 255.0/(fmax-fmin)
-
-					if (frame.ndim == 3):
-						movie = frame
-						for frame in movie:
-							writeFrame(frame)
-					else:
-						writeFrame(frame)
-			else:
-				print('loading..')
-				movie = tif.asarray()
-				print('loaded!')
-
-				movie = np.divide(movie, average)
-				movie -= 1.0
-				print('divided')
-
-				if f == 0:
-					mean = movie.mean()
-					std = movie.std()
-					fmin = mean - 3 * std
-					fmax = mean + 7 * std
-					fslope = 255.0/(fmax-fmin)
-
-				if logmean:
-					masked = wb.getMaskedRegion(movie, roimask)
+				elif logmean and (frame.ndim == 3):
+					masked = wb.getMaskedRegion(frame, roimask)
 					file_timecourse = masked.mean(axis=1)
 					file_std_tc[i] = masked.std(axis=1)
 					file_min_tc[i] = masked.min(axis=1)
 					file_max_tc[i] = masked.max(axis=1)
 					del masked
 
-				for i, frame in enumerate(movie):
-					print('writing frame', i)
-					writeFrame(frame)
+				
+				# if first frame, calculate scaling parameters
+				if (i == 0) and (f == 0):
+
+					if logmean:
+						mean = file_timecourse[i]
+						std = file_std_tc[i]
+
+					else:
+						mean = frame.mean()
+						std = frame.std()
+					
+					fmin = mean - 3 * std
+					fmax = mean + 7 * std
+					fslope = 255.0/(fmax-fmin)
+
+				writeFrame(frame)
 
 			if logmean:
 				file_mean[f] = file_timecourse
@@ -370,24 +374,16 @@ def rollingDFOF(pathlist, average, output, resize_factor=1, codec=None, speed=1,
 				file_min[f] = file_min_tc
 				file_max[f] = file_max_tc
 
-			print('Writing file took {0} seconds\n'.format(timer()-t0))
-		
-	out.release()
+			if f < len(pathlist)-1:
+				manager.finished_threads -= 1
+			data["movie"] = result
 
-	if logmean:
-		file_mean = np.concatenate(file_mean)
-		file_std = np.concatenate(file_std)
-		file_min = np.concatenate(file_min)
-		file_max = np.concatenate(file_max)
-		data = {'dfof_mean':file_mean,
-				'dfof_std':file_std,
-				'dfof_min':file_min,
-				'dfof_max':file_max,
-				'exp_mean':mean,
-				'exp_std':std,
-				'cmin':fmin,
-				'cmax':fmax}
-		f_mean.save(data)
+			#data["file_mean"] = file_mean
+			#data["file_std"] = file_std
+			#data["file_min"] = file_min
+			#data["file_max"] = file_max
+
+			manager.callback(data)
 
 
 if __name__ == '__main__':
