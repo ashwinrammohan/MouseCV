@@ -142,6 +142,7 @@ def test_ROI_timecourse(brain_data, start_event = False, mid_event = False, end_
 	mid_spike_set = []
 	end_spike_set = []
 	eventMatrix = np.zeros((20,numRows,numRows))
+	pMatrix = np.zeros((20,numRows,numRows))
 
 	for i in range(brain_data.shape[0]):
 		dataRow = brain_data[i]
@@ -156,11 +157,19 @@ def test_ROI_timecourse(brain_data, start_event = False, mid_event = False, end_
 	for i in range(numRows):
 		for j in range(numRows):
 			if (i != j):
+				print("Comparing " + str(i) + " to " + str(j))
 				bin_tcs1 = binarized_data[i]
 				bin_tcs2 = binarized_data[j]
 				rand, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
 				eventMatrix[:,i,j] = rand
-				rand_results = getResults(rand, win_t=win_t, na=na, nb=nb, verbose = False, veryVerbose = False)
+				pMatrix[:,i,j] = getResults(rand, win_t=win_t, na=na, nb=nb, verbose = True, veryVerbose = False)
+
+
+	print(eventMatrix[:,0,1])
+	print(pMatrix[:,0,1])
+	print(eventMatrix[:,1,0])
+	print(pMatrix[:,1,0])
+	return eventMatrix, pMatrix
 
 	#plt.plot(xs,vals)
 	'''
@@ -235,17 +244,19 @@ def test_amplitude():
 	plt.show()
 
 
-<<<<<<< HEAD
 def eventCoin(a, b, #two binary signals to compare
               win_t, #vector of time (s) for window
+              na = None, nb = None, #number of total events in each comparitive vector
               ratetype = 'precursor', #precursor or trigger
               tau = 0, #lag coefficeint 
               fps = 10, #sampling rate, frames per sec
               verbose = True,
               veryVerbose = False):
     
-    na = sum(a)
-    nb = sum(b)
+    if na == None:
+        na = sum(a)
+    if nb == None:
+        nb = sum(b)
     
     #find all indices for each event
     a_ind = [i for i, e in enumerate(a) if e != 0]
@@ -274,22 +285,36 @@ def eventCoin(a, b, #two binary signals to compare
         plt.show()
 
     #create event matrix
-    events = np.zeros((ind_diff.shape[0], len(win_fr)))
-    
-    for i, win in enumerate(win_fr):
-        if verbose:
-            print('Calculating coincidence rate for window ' + str(win/fps) +'sec(s)')
-        for j in range(ind_diff.shape[0]):
-            for k in range(ind_diff.shape[1]):
-                if ind_diff[j,k] > 0 and ind_diff[j,k] < win:
-                    events[j, i] = 1
-                    
     if ratetype == 'precursor':
+        print('Calculating PRECURSOR coincidence \n ----------------------------------')
+
+        events = np.zeros((ind_diff.shape[0], len(win_fr)))
+
+        for i, win in enumerate(win_fr):
+            if verbose:
+                print('Calculating PRECURSOR coincidence rate for window ' + str(win/fps) +'sec(s)')
+            for j in range(ind_diff.shape[0]):
+                for k in range(ind_diff.shape[1]):
+                    if ind_diff[j,k] > 0 and ind_diff[j,k] < win:
+                        events[j,i] = 1
+
         rate_win = np.sum(events, axis=0)/na
-        
+
     if ratetype == 'trigger':
+        print('Calculating TRIGGER coincidence \n ----------------------------------')
+        
+        events = np.zeros((ind_diff.shape[1], len(win_fr)))
+        
+        for i, win in enumerate(win_fr):
+            if verbose:
+                print('Calculating coincidence rate for window ' + str(win/fps) +'sec(s)')
+            for j in range(ind_diff.shape[0]):
+                for k in range(ind_diff.shape[1]):
+                    if ind_diff[j,k] > 0 and ind_diff[j,k] < win:
+                        events[k,i] = 1
+        
         rate_win = np.sum(events, axis=0)/nb
-    
+                    
     if verbose:
         plt.imshow(events, aspect = 'auto')
         plt.title('Event matrix')
@@ -307,6 +332,7 @@ def eventCoin(a, b, #two binary signals to compare
         plt.show()
 
     return rate_win, na, nb
+
 def getResults(rate_win,              
               win_t, #vector of time (s) for window
               na, #number of events in a
@@ -319,25 +345,37 @@ def getResults(rate_win,
               veryVerbose = False):
     
     #expected rate and stdev of the rate
-    rho = 1 - win_t/(T - tau)
-    exp_rate = na*(1 - (rho)**nb)
-    exp_std = np.sqrt(1/na*(1-rho**nb) * rho**nb)
+    if ratetype == 'precursor':
+        rho = 1 - win_t/(T - tau)
+        exp_rate = na*(1 - (rho)**nb)
+        exp_std = np.sqrt(1/na*(1-rho**nb) * rho**nb)
+    if ratetype == 'trigger':
+        rho = 1 - win_t/(T - tau)
+        exp_rate = nb*(1 - (rho)**na)
+        exp_std = np.sqrt(1/nb*(1-rho**na) * rho**na)
     
     #quantiles used for graphing
     if verbose:
         perc = np.array([1, 2.5, 25, 50, 75, 97.5, 99])
         mark = ['k:', 'k-.', 'k--', 'k-', 'k--','k-.', 'k:']
+        quantile = np.zeros((exp_rate.shape[0], perc.shape[0]))
+
     #number samples for null hypothesis
     k=10000
 
     sample = np.zeros((exp_rate.shape[0], k))
-    quantile = np.zeros((exp_rate.shape[0], perc.shape[0]))
     results = np.zeros(exp_rate.shape[0])
 
     for i, r in enumerate(exp_rate):
         sample[i,:] = poisson.rvs(r, size=k)
-        quantile[i,:] = np.percentile(sample[i,:], perc)/na
-        results[i] = sum(rate_win[i] < sample[i, :]/na)/k
+        if ratetype == 'precursor':
+            if verbose:
+                quantile[i,:] = np.percentile(sample[i,:], perc)/na
+            results[i] = sum(rate_win[i] < sample[i, :]/na)/k
+        if ratetype == 'trigger':
+            if verbose:
+                quantile[i,:] = np.percentile(sample[i,:], perc)/nb
+            results[i] = sum(rate_win[i] < sample[i, :]/nb)/k
         if veryVerbose:
             print(str(win_t[i]) + 'sec(s) time window produces a p value: ' + str(results[i]))
 
@@ -367,8 +405,12 @@ def getResults(rate_win,
 
 data = hdf5manager("P2_timecourses.hdf5").load()
 brain_data = data['brain'][:2,:]
+metadata = data['expmeta']
 print(brain_data.shape)
-test_ROI_timecourse(brain_data)
-=======
-test_amplitude()
->>>>>>> master
+eventMatrix, pMatrix = test_ROI_timecourse(brain_data)
+fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "expmeta": metadata}
+saveData = hdf5manager("MatrixData.hdf5")
+saveData.save(fileData)
+
+loadData = hdf5manager("MatrixData.hdf5").load()
+print(loadData['expmeta'])
