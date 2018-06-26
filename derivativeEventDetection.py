@@ -80,7 +80,7 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 	spikes = [] # the top of each spike will be stored here
 	if (peak_height == 0):
 		peak_height = np.std(data)/3 # if no peak_height is given, the standard deviation is used to guess a good min height
-		print("Min peak height: " + str(peak_height))
+		#("Min peak height: " + str(peak_height))
 
 	# initialize past batch
 	for i in range(1, second_deriv_batch+1):
@@ -135,22 +135,48 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 	return (start_spikes, mid_spikes, spikes, data)
 
 def test_ROI_timecourse():
-	data = hdf5manager("P2_timecourses.hdf5").load()
-
-	for i in range(10):
-		plt.figure("ROI " + str(i))
-		xs = list(np.linspace(0,2000,2000))
-		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data['brain'][i][:2000], -0.3)
-
-		plt.plot(xs,vals)
+	data = hdf5manager("P5_timecourses.hdf5").load()
+	brain_data_size = data['brain'].shape[0]
+	start_spike_set = []
+	for i in range(brain_data_size):
+		size = len(data['brain'][i])
+		#plt.figure("ROI " + str(i))
+		xs = list(np.linspace(0,size,size))
+		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data['brain'][i], -0.3)
+		start_spike_set.append(start_spikes)
+		#plt.plot(xs,vals)
+		'''
 		for i in start_spikes:
 			plt.axvline(x = xs[i], color = 'red')
 		for i in mid_spikes:
 			plt.axvline(x = xs[i], color = (1,1,0,0.3))
 		for i in end_spikes:
 			plt.axvline(x = xs[i], color = 'red')
-
+		'''
 	plt.show()
+	plot_event_Coincidence_Rates(start_spike_set,data['brain'].shape[1])
+
+def plot_event_Coincidence_Rates(start_spike_set, size):
+	print(len(start_spike_set))
+	bins = np.arange(100,size+100,100)
+	eventCoincidenceRates = []
+	for i in range(len(start_spike_set)):
+		start_spikes = start_spike_set[i]
+		for j in range(0,bins.shape[0]):
+			start = bins[j] - 100
+			end = bins[j]
+			num_events = 0
+			for k in range(len(start_spikes)):
+				if (start_spikes[k] >= start and start_spikes[k] <= end):
+					num_events +=1
+			#print("(" + str(start) + " to " + str(end) + "): " + str(num_events/10))
+			eventCoincidenceRates.append(num_events/10)
+	max_val = max(eventCoincidenceRates)
+	print(str(max_val) + " occurred " + str(eventCoincidenceRates.count(max_val)) + " times")
+	plt.hist(np.asarray(eventCoincidenceRates),6), plt.xlabel("Number of events/10 seconds"), plt.ylabel("Number of Occurrences")
+	plt.title("Event Coincidence Rate Analysis")
+	plt.show()
+
 
 def test_amplitude():
 	data = loadHDF5("mouse_vectors")
@@ -170,4 +196,5 @@ def test_amplitude():
 
 	plt.show()
 
-test_ROI_timecourse()
+
+test_amplitude()
