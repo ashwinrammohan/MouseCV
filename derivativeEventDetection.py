@@ -235,6 +235,7 @@ def test_amplitude():
 	plt.show()
 
 
+<<<<<<< HEAD
 def eventCoin(a, b, #two binary signals to compare
               win_t, #vector of time (s) for window
               ratetype = 'precursor', #precursor or trigger
@@ -368,3 +369,6 @@ data = hdf5manager("P2_timecourses.hdf5").load()
 brain_data = data['brain'][:2,:]
 print(brain_data.shape)
 test_ROI_timecourse(brain_data)
+=======
+test_amplitude()
+>>>>>>> master
