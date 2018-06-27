@@ -145,10 +145,15 @@ def eventCoin(a, b, #two binary signals to compare
 		for i, win in enumerate(win_fr):
 			if verbose:
 				print('Calculating PRECURSOR coincidence rate for window ' + str(win/fps) +'sec(s)')
-			for j in range(ind_diff.shape[0]):
-				for k in range(ind_diff.shape[1]):
-					if ind_diff[j,k] > 0 and ind_diff[j,k] < win:
-						events[j,i] = 1
+
+			ind_diff = ind_diff / win
+			ind_diff = 1 - ind_diff
+			ind_diff = (np.absolute(ind_diff) + ind_diff) / 2
+			ind_diff = np.ceil(ind_diff)
+
+			row_sum = np.sum(ind_diff, axis=1)
+			events[i] = np.heaviside(ind_diff, 0)
+			# events[i] = np.ceil(row_sum / ind_diff.shape[0])
 
 		rate_win = np.sum(events, axis=0)/na
 
@@ -160,10 +165,15 @@ def eventCoin(a, b, #two binary signals to compare
 		for i, win in enumerate(win_fr):
 			if verbose:
 				print('Calculating coincidence rate for window ' + str(win/fps) +'sec(s)')
-			for j in range(ind_diff.shape[0]):
-				for k in range(ind_diff.shape[1]):
-					if ind_diff[j,k] > 0 and ind_diff[j,k] < win:
-						events[k,i] = 1
+				
+			ind_diff = ind_diff / win
+			ind_diff = 1 - ind_diff
+			ind_diff = (np.absolute(ind_diff) + ind_diff) / 2
+			ind_diff = np.ceil(ind_diff)
+
+			row_sum = np.sum(ind_diff, axis=1)
+			events[i] = np.heaviside(ind_diff, 0)
+			# events[i] = np.ceil(row_sum / ind_diff.shape[0])
 		
 		rate_win = np.sum(events, axis=0)/nb
 					
