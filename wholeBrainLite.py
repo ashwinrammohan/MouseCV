@@ -35,44 +35,58 @@ import os
 import time
 import _thread
 import multiprocessing
+from multiprocessing import Process, Manager
+
 
 class ThreadManager:
-	def __init__(self, thread_method, thread_callback, finished_callback, threads=0):
+	def __init__(self, thread_method, thread_callback, finished_callback, threads=0, settings = {}):
 		if threads == 0:
 			self.wanted_threads = multiprocessing.cpu_count()
 		else:
 			self.wanted_threads = threads
 
-		self.finished_threads = 0
+		self.settings = Manager().dict()
+		self.settings["finished_threads"] = 0
+		for key in settings.keys():
+			self.settings[key] = settings[key]
 
 		self.thread_method = thread_method
 		self.thread_callback = thread_callback
 		self.finished_callback = finished_callback
 
-	def callback(self, data):
-		self.thread_callback(data, self)
-		self.finished_threads += 1
-		print(str(self.finished_threads) + " threads completed \n")
-		if self.finished_threads >= self.wanted_threads:
-			self.finished_callback(data)
+	def callback(self, data, settings):
+		self.thread_callback(data, settings)
+		settings["finished_threads"] += 1
+		print("Thread " + str(settings["finished_threads"]) + " completed \n")
 
 	def run(self, paths, data={}):
+		paths = paths[:16]
+
+		if (len(paths) > self.wanted_threads):
+			self.wanted_threads = len(paths)
+
+		threads = []
 		pathsPerThread = int(len(paths) / self.wanted_threads)
-		print("Threads:", threads)
-		print("Files:", len(pathlist))
+		print("Threads:", self.wanted_threads)
+		print("Files:", len(paths))
 
 		upper = 0
 		for i in range(self.wanted_threads-1):
-			subpaths = pathlist[i::self.wanted_threads]
+			subpaths = paths[i::self.wanted_threads]
 			cpy = {**data}
 			cpy["index"] = i
-			_thread.start_new_thread(self.thread_method, (subpaths, cpy, self))
+			p = Process(target = self.thread_method, args = (subpaths, cpy, self.settings, self.callback))
+			p.start()
+			threads.append(p)
 
 		cpy = {**data}
 		cpy["index"] = self.wanted_threads-1
-		subpaths = pathlist[self.wanted_threads-1::self.wanted_threads]
-		self.thread_method(subpaths, {**data}, self)
+		subpaths = paths[self.wanted_threads-1::self.wanted_threads]
+		self.thread_method(subpaths, cpy, self.settings, self.callback)
+		for p in threads:
+			p.join()
 
+		self.finished_callback(self.settings)
 
 
 
