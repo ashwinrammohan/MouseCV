@@ -7,13 +7,13 @@ from derivativeEventDetection import detectSpikes
 from ThreadManager import ThreadManager
 import time
 
-def test_ROI_timecourse(brain_data, start_event = True, mid_event = True, end_event = True):
+def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, mid_event = True, end_event = True):
 	binarized_data = np.zeros_like(brain_data).astype('uint8')
 	numRows = brain_data.shape[0]
 	start_spike_set = []
 	mid_spike_set = []
 	end_spike_set = []
-	win_t = np.arange(0.1,2,1/10)
+	win_t = np.arange((1/fps),max_window,(1/fps))
 	eventMatrix = np.zeros((win_t.shape[0],numRows,numRows))
 	pMatrix = np.zeros((win_t.shape[0],numRows,numRows))
 
@@ -22,7 +22,14 @@ def test_ROI_timecourse(brain_data, start_event = True, mid_event = True, end_ev
 		binarizedRow = np.zeros_like(dataRow)
 		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3)
 		for j in range(dataRow.shape[0]):
-			if j in start_spikes or j in mid_spikes or j in end_spikes:
+			check = False
+			if (start_event):
+				check = check or j in start_spikes
+			if (not check and mid_event):
+				check = check or j in mid_spikes
+			if (not check and end_event):
+				check = check or j in end_spikes
+			if (check):
 				binarizedRow[j] = 1
 		binarized_data[i,:] = binarizedRow
 
@@ -32,10 +39,11 @@ def test_ROI_timecourse(brain_data, start_event = True, mid_event = True, end_ev
 				print("Comparing " + str(i) + " to " + str(j))
 				bin_tcs1 = binarized_data[i]
 				bin_tcs2 = binarized_data[j]
-				event_data, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
-				eventMatrix[:,i,j] = event_data
-				pMatrix[:,i,j] = getResults(event_data, win_t=win_t, na=na, nb=nb, verbose = True, veryVerbose = False)
-
+				rand, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
+				eventMatrix[:,i,j] = rand
+				pMatrix[:,i,j] = getResults(rand, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = True, veryVerbose = False)
+			else:
+				eventMatrix[:,i,j] = np.NaN
 
 	print(eventMatrix[:,0,1])
 	print(pMatrix[:,0,1])
@@ -274,14 +282,35 @@ def getResults(rate_win,
 	
 	return (results)
 
-data = hdf5manager("P2_timecourses.hdf5").load()
-brain_data = data['brain'][:2,:]
-metadata = data['expmeta']
-print(brain_data.shape)
-eventMatrix, pMatrix = test_ROI_timecourse(brain_data)
-fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "expmeta": metadata}
-saveData = hdf5manager("MatrixData.hdf5")
-saveData.save(fileData)
 
-loadData = hdf5manager("MatrixData.hdf5").load()
-print(loadData['expmeta'])
+
+if __name__ == '__main__': 
+	import argparse
+
+	ap = argparse.ArgumentParser()
+	ap.add_argument('-i', '--input', type = str, 
+		nargs = 1, required = False, 
+		help = 'name of hdf5 input file with ICA-filtered timecourses')
+	# ap.add_argument('-e', '--experiment', 
+	#     nargs = 1, required = False, 
+	#     help = 'name of experiment (YYYYMMDD_EE) for loading associated files.\
+	#         Requires folder argument -f')
+	ap.add_argument('-f', '--folder', 
+		nargs = 1, required = False, 
+		help = 'name of folder to load hdf5 file and save output hdf5 file')
+	# ap.add_argument('-o', '--output', type = argparse.FileType('a+'),
+	# 	nargs = 1, required = False, 
+	# 	help = 'path to the output experiment file to be written.  '
+	# 	'Must be .hdf5 file.')
+	args = vars(ap.parse_args())
+
+	data = hdf5manager(args['input'][0]).load()
+	brain_data = data['brain'][:2,:]
+	metadata = data['expmeta']
+	name = metadata['name']
+
+	print(brain_data.shape)
+	eventMatrix, pMatrix = test_ROI_timecourse(brain_data)
+	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "expmeta": metadata}
+	saveData = hdf5manager(name + "_MatrixData.hdf5")
+	saveData.save(fileData)
