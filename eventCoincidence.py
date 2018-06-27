@@ -4,18 +4,16 @@ from matplotlib import pyplot as plt
 from hdf5manager import *
 from scipy.stats import poisson
 from derivativeEventDetection import detectSpikes
-from ThreadManager import ThreadManager
 import time
+from multiprocessing import Process, Manager, cpu_count
 
-def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, mid_event = True, end_event = True):
+def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, mid_event = True, end_event = True, threads = 0):
 	binarized_data = np.zeros_like(brain_data).astype('uint8')
 	numRows = brain_data.shape[0]
 	start_spike_set = []
 	mid_spike_set = []
 	end_spike_set = []
 	win_t = np.arange((1/fps),max_window,(1/fps))
-	eventMatrix = np.zeros((win_t.shape[0],numRows,numRows))
-	pMatrix = np.zeros((win_t.shape[0],numRows,numRows))
 
 	for i in range(brain_data.shape[0]):
 		dataRow = brain_data[i]
@@ -33,17 +31,46 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 				binarizedRow[j] = 1
 		binarized_data[i,:] = binarizedRow
 
-	for i in range(numRows):
-		for j in range(numRows):
-			if (i != j):
-				print("Comparing " + str(i) + " to " + str(j))
-				bin_tcs1 = binarized_data[i]
-				bin_tcs2 = binarized_data[j]
-				rand, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
-				eventMatrix[:,i,j] = rand
-				pMatrix[:,i,j] = getResults(rand, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = True, veryVerbose = False)
-			else:
-				eventMatrix[:,i,j] = np.NaN
+	if threads == 0:
+		wanted_threads = cpu_count()
+	threads = []
+	print("Creating " + str(wanted_threads) + " threads...")
+
+	persistData = Manager().dict()
+	persistData["eventMatrix"] = np.zeros((win_t.shape[0],numRows,numRows))
+	persistData["pMatrix"] = np.zeros((win_t.shape[0],numRows,numRows))
+	print("Created manager dictionary")
+
+	def _eventCoin(rowsLower, rowsUpper):
+		print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
+		for i in range(rowsLower, rowsUpper):
+			for j in range(numRows):
+				if (i != j):
+					print("Comparing " + str(i) + " to " + str(j))
+					bin_tcs1 = binarized_data[i]
+					bin_tcs2 = binarized_data[j]
+					event_data, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
+					persistData["eventMatrix"][:,i,j] = event_data
+					persistData["pMatrix"][:,i,j] = getResults(event_data, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
+				else:
+					persistData["eventMatrix"][:,i,j] = np.NaN
+
+	dataPer = int(numRows / wanted_threads)
+	upper = 0
+	for i in range(wanted_threads-1):
+		lower = i*dataPer
+		upper = (i+1)*dataPer
+
+		p = Process(target=_eventCoin, args=(lower, upper))
+		p.start()
+		threads.append(p)
+
+	_eventCoin(upper, numRows)
+	for p in threads:
+		p.join()
+
+	eventMatrix = persistData["eventMatrix"]
+	pMatrix = persistData["pMatrix"]
 
 	print(eventMatrix[:,0,1])
 	print(pMatrix[:,0,1])
@@ -146,7 +173,7 @@ def eventCoin(a, b, #two binary signals to compare
 
 	#create event matrix
 	if ratetype == 'precursor':
-		print('Calculating PRECURSOR coincidence \n ----------------------------------')
+		#print('Calculating PRECURSOR coincidence \n ----------------------------------')
 
 		events = np.zeros((ind_diff.shape[0], len(win_fr)))
 
@@ -171,7 +198,7 @@ def eventCoin(a, b, #two binary signals to compare
 		print("Took " + str(time.clock() - start_time) + " seconds.")
 
 	if ratetype == 'trigger':
-		print('Calculating TRIGGER coincidence \n ----------------------------------')
+		#print('Calculating TRIGGER coincidence \n ----------------------------------')
 		
 		events = np.zeros((ind_diff.shape[1], len(win_fr)))
 		ind_diff[ind_diff > 0] = 0
@@ -305,7 +332,7 @@ if __name__ == '__main__':
 	args = vars(ap.parse_args())
 
 	data = hdf5manager(args['input'][0]).load()
-	brain_data = data['brain'][:2,:]
+	brain_data = data['brain'][:8,:]
 	metadata = data['expmeta']
 	name = metadata['name']
 
