@@ -4,6 +4,8 @@ from matplotlib import pyplot as plt
 from hdf5manager import *
 from scipy.stats import poisson
 from derivativeEventDetection import detectSpikes
+from ThreadManager import ThreadManager
+import time
 
 def test_ROI_timecourse(brain_data, start_event = True, mid_event = True, end_event = True):
 	binarized_data = np.zeros_like(brain_data).astype('uint8')
@@ -11,8 +13,9 @@ def test_ROI_timecourse(brain_data, start_event = True, mid_event = True, end_ev
 	start_spike_set = []
 	mid_spike_set = []
 	end_spike_set = []
-	eventMatrix = np.zeros((20,numRows,numRows))
-	pMatrix = np.zeros((20,numRows,numRows))
+	win_t = np.arange(0.1,2,1/10)
+	eventMatrix = np.zeros((win_t.shape[0],numRows,numRows))
+	pMatrix = np.zeros((win_t.shape[0],numRows,numRows))
 
 	for i in range(brain_data.shape[0]):
 		dataRow = brain_data[i]
@@ -23,16 +26,15 @@ def test_ROI_timecourse(brain_data, start_event = True, mid_event = True, end_ev
 				binarizedRow[j] = 1
 		binarized_data[i,:] = binarizedRow
 
-	win_t = np.arange(0,2,1/10)
 	for i in range(numRows):
 		for j in range(numRows):
 			if (i != j):
 				print("Comparing " + str(i) + " to " + str(j))
 				bin_tcs1 = binarized_data[i]
 				bin_tcs2 = binarized_data[j]
-				rand, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
-				eventMatrix[:,i,j] = rand
-				pMatrix[:,i,j] = getResults(rand, win_t=win_t, na=na, nb=nb, verbose = True, veryVerbose = False)
+				event_data, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
+				eventMatrix[:,i,j] = event_data
+				pMatrix[:,i,j] = getResults(event_data, win_t=win_t, na=na, nb=nb, verbose = True, veryVerbose = False)
 
 
 	print(eventMatrix[:,0,1])
@@ -125,7 +127,7 @@ def eventCoin(a, b, #two binary signals to compare
 			ind_diff [i,j]= inda - (tau*fps) - indb
 
 	#replace all neg values with 0
-	ind_diff[ind_diff< 0] = 0
+	ind_diff[ind_diff < 0] = 0
 	
 	if veryVerbose:
 		print('Size of difference array: ',ind_diff.shape)
@@ -142,20 +144,25 @@ def eventCoin(a, b, #two binary signals to compare
 
 		events = np.zeros((ind_diff.shape[0], len(win_fr)))
 
+		start_time = time.clock()
+
 		for i, win in enumerate(win_fr):
 			if verbose:
 				print('Calculating PRECURSOR coincidence rate for window ' + str(win/fps) +'sec(s)')
 
-			ind_diff = ind_diff / win
-			ind_diff = 1 - ind_diff
-			ind_diff = (np.absolute(ind_diff) + ind_diff) / 2
-			ind_diff = np.ceil(ind_diff)
+			new_diff = ind_diff / win
+			new_diff = 1 - new_diff
+			new_diff = (np.absolute(new_diff) + new_diff) / 2
+			binarized = np.ceil(new_diff)
+			mask_zeros = 1 - np.floor(new_diff)
+			binarized = np.multiply(binarized, mask_zeros)
 
-			row_sum = np.sum(ind_diff, axis=1)
-			events[i] = np.heaviside(ind_diff, 0)
-			# events[i] = np.ceil(row_sum / ind_diff.shape[0])
+			row_sum = np.heaviside(np.sum(binarized, axis=1), 0)
+			events[:,i] = row_sum
+			# events[:,i] = np.ceil(row_sum / new_diff.shape[0])
 
 		rate_win = np.sum(events, axis=0)/na
+		print("Took " + str(time.clock() - start_time) + " seconds.")
 
 	if ratetype == 'trigger':
 		print('Calculating TRIGGER coincidence \n ----------------------------------')
@@ -165,15 +172,17 @@ def eventCoin(a, b, #two binary signals to compare
 		for i, win in enumerate(win_fr):
 			if verbose:
 				print('Calculating coincidence rate for window ' + str(win/fps) +'sec(s)')
-				
-			ind_diff = ind_diff / win
-			ind_diff = 1 - ind_diff
-			ind_diff = (np.absolute(ind_diff) + ind_diff) / 2
-			ind_diff = np.ceil(ind_diff)
 
-			row_sum = np.sum(ind_diff, axis=1)
-			events[i] = np.heaviside(ind_diff, 0)
-			# events[i] = np.ceil(row_sum / ind_diff.shape[0])
+			new_diff = ind_diff / win
+			new_diff = 1 - new_diff
+			new_diff = (np.absolute(new_diff) + new_diff) / 2
+			binarized = np.ceil(new_diff)
+			mask_zeros = 1 - np.floor(new_diff)
+			binarized = np.multiply(binarized, mask_zeros)
+
+			row_sum = np.heaviside(np.sum(binarized, axis=1), 0)
+			events[:,i] = row_sum
+			# events[:,i] = np.ceil(row_sum / new_diff.shape[0])
 		
 		rate_win = np.sum(events, axis=0)/nb
 					
