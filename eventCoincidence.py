@@ -11,7 +11,7 @@ def test_ROI_timecourse(brain_data, fps = 10, max_window = 2, start_event = True
 	start_spike_set = []
 	mid_spike_set = []
 	end_spike_set = []
-	win_t = np.arange(0,max_window,1/fps)
+	win_t = np.arange(0,max_window,(1/fps))
 	eventMatrix = np.zeros((win_t.shape[0],numRows,numRows))
 	pMatrix = np.zeros((win_t.shape[0],numRows,numRows))
 
@@ -23,9 +23,9 @@ def test_ROI_timecourse(brain_data, fps = 10, max_window = 2, start_event = True
 			check = False
 			if (start_event):
 				check = check or j in start_spikes
-			if (mid_event):
+			if (not check and mid_event):
 				check = check or j in mid_spikes
-			if (end_event):
+			if (not check and end_event):
 				check = check or j in end_spikes
 			if (check):
 				binarizedRow[j] = 1
@@ -37,9 +37,9 @@ def test_ROI_timecourse(brain_data, fps = 10, max_window = 2, start_event = True
 				print("Comparing " + str(i) + " to " + str(j))
 				bin_tcs1 = binarized_data[i]
 				bin_tcs2 = binarized_data[j]
-				rand, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
+				rand, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = True, veryVerbose = False)
 				eventMatrix[:,i,j] = rand
-				pMatrix[:,i,j] = getResults(rand, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, verbose = True, veryVerbose = False)
+				pMatrix[:,i,j] = getResults(rand, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = True, veryVerbose = False)
 			else:
 				eventMatrix[:,i,j] = np.NaN
 
@@ -269,7 +269,7 @@ if __name__ == '__main__':
 	import argparse
 
 	ap = argparse.ArgumentParser()
-	ap.add_argument('-i', '--input', 
+	ap.add_argument('-i', '--input', type = str, 
 		nargs = 1, required = False, 
 		help = 'name of hdf5 input file with ICA-filtered timecourses')
 	# ap.add_argument('-e', '--experiment', 
@@ -279,17 +279,19 @@ if __name__ == '__main__':
 	ap.add_argument('-f', '--folder', 
 		nargs = 1, required = False, 
 		help = 'name of folder to load hdf5 file and save output hdf5 file')
-	ap.add_argument('-o', '--output', type = argparse.FileType('a+'),
-		nargs = 1, required = False, 
-		help = 'path to the output experiment file to be written.  '
-		'Must be .hdf5 file.')
+	# ap.add_argument('-o', '--output', type = argparse.FileType('a+'),
+	# 	nargs = 1, required = False, 
+	# 	help = 'path to the output experiment file to be written.  '
+	# 	'Must be .hdf5 file.')
 	args = vars(ap.parse_args())
 
 	data = hdf5manager(args['input'][0]).load()
 	brain_data = data['brain'][:2,:]
 	metadata = data['expmeta']
+	name = metadata['name']
+
 	print(brain_data.shape)
 	eventMatrix, pMatrix = test_ROI_timecourse(brain_data)
 	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "expmeta": metadata}
-	saveData = hdf5manager(args['output'][0])
+	saveData = hdf5manager(name + "_MatrixData.hdf5")
 	saveData.save(fileData)
