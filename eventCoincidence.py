@@ -7,6 +7,20 @@ from derivativeEventDetection import detectSpikes
 import time
 from multiprocessing import Process, Manager, cpu_count
 
+def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, persistData, brain_data, fps):
+		print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
+		for i in range(rowsLower, rowsUpper):
+			for j in range(numRows):
+				if (i != j):
+					print("Comparing " + str(i) + " to " + str(j))
+					bin_tcs1 = binarized_data[i]
+					bin_tcs2 = binarized_data[j]
+					event_data, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = True, veryVerbose = False)
+					persistData["eventMatrix"][:,i,j] = event_data
+					persistData["pMatrix"][:,i,j] = getResults(event_data, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
+				else:
+					persistData["eventMatrix"][:,i,j] = np.NaN
+
 def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, mid_event = True, end_event = True, threads = 0):
 	binarized_data = np.zeros_like(brain_data).astype('uint8')
 	numRows = brain_data.shape[0]
@@ -33,6 +47,9 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 
 	if threads == 0:
 		wanted_threads = cpu_count()
+	else:
+		wanted_threads = threads
+
 	threads = []
 	print("Creating " + str(wanted_threads) + " threads...")
 
@@ -41,31 +58,17 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 	persistData["pMatrix"] = np.zeros((win_t.shape[0],numRows,numRows))
 	print("Created manager dictionary")
 
-	def _eventCoin(rowsLower, rowsUpper):
-		print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
-		for i in range(rowsLower, rowsUpper):
-			for j in range(numRows):
-				if (i != j):
-					print("Comparing " + str(i) + " to " + str(j))
-					bin_tcs1 = binarized_data[i]
-					bin_tcs2 = binarized_data[j]
-					event_data, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
-					persistData["eventMatrix"][:,i,j] = event_data
-					persistData["pMatrix"][:,i,j] = getResults(event_data, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
-				else:
-					persistData["eventMatrix"][:,i,j] = np.NaN
-
 	dataPer = int(numRows / wanted_threads)
 	upper = 0
 	for i in range(wanted_threads-1):
 		lower = i*dataPer
 		upper = (i+1)*dataPer
 
-		p = Process(target=_eventCoin, args=(lower, upper))
+		p = Process(target=_eventCoin, args=(lower, upper, numRows, binarized_data, win_t, persistData, brain_data, fps))
 		p.start()
 		threads.append(p)
 
-	_eventCoin(upper, numRows)
+	_eventCoin(upper, numRows, numRows, binarized_data, win_t, persistData, brain_data, fps)
 	for p in threads:
 		p.join()
 
@@ -176,7 +179,7 @@ def eventCoin(a, b, #two binary signals to compare
 		#print('Calculating PRECURSOR coincidence \n ----------------------------------')
 
 		events = np.zeros((ind_diff.shape[0], len(win_fr)))
-
+		ind_diff[ind_diff > 0] = 0 #max(win_fr)*1.5
 		start_time = time.clock()
 
 		for i, win in enumerate(win_fr):
@@ -201,7 +204,7 @@ def eventCoin(a, b, #two binary signals to compare
 		#print('Calculating TRIGGER coincidence \n ----------------------------------')
 		
 		events = np.zeros((ind_diff.shape[1], len(win_fr)))
-		ind_diff[ind_diff > 0] = 0
+		ind_diff[ind_diff < 0] = 0
 		
 		start_time = time.clock()
 		for i, win in enumerate(win_fr):
@@ -332,12 +335,12 @@ if __name__ == '__main__':
 	args = vars(ap.parse_args())
 
 	data = hdf5manager(args['input'][0]).load()
-	brain_data = data['brain'][:8,:]
+	brain_data = data['brain'][:2,:]
 	metadata = data['expmeta']
 	name = metadata['name']
 
 	print(brain_data.shape)
-	eventMatrix, pMatrix = test_ROI_timecourse(brain_data)
+	eventMatrix, pMatrix = test_ROI_timecourse(brain_data, threads=1)
 	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "expmeta": metadata}
 	saveData = hdf5manager(name + "_MatrixData.hdf5")
 	saveData.save(fileData)
