@@ -7,13 +7,13 @@ from derivativeEventDetection import detectSpikes
 from ThreadManager import ThreadManager
 import time
 
-def test_ROI_timecourse(brain_data, fps = 10, max_window = 2, start_event = True, mid_event = True, end_event = True):
+def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, mid_event = True, end_event = True):
 	binarized_data = np.zeros_like(brain_data).astype('uint8')
 	numRows = brain_data.shape[0]
 	start_spike_set = []
 	mid_spike_set = []
 	end_spike_set = []
-	win_t = np.arange(0,max_window,(1/fps))
+	win_t = np.arange((1/fps),max_window,(1/fps))
 	eventMatrix = np.zeros((win_t.shape[0],numRows,numRows))
 	pMatrix = np.zeros((win_t.shape[0],numRows,numRows))
 
@@ -39,7 +39,7 @@ def test_ROI_timecourse(brain_data, fps = 10, max_window = 2, start_event = True
 				print("Comparing " + str(i) + " to " + str(j))
 				bin_tcs1 = binarized_data[i]
 				bin_tcs2 = binarized_data[j]
-				rand, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = True, veryVerbose = False)
+				rand, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
 				eventMatrix[:,i,j] = rand
 				pMatrix[:,i,j] = getResults(rand, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = True, veryVerbose = False)
 			else:
