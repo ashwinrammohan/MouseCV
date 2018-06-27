@@ -126,9 +126,7 @@ def eventCoin(a, b, #two binary signals to compare
 		for j,indb in enumerate(b_ind): # columns
 			ind_diff [i,j]= inda - (tau*fps) - indb
 
-	#replace all neg values with 0
-	ind_diff[ind_diff < 0] = 0
-	
+	#replace all neg values with 0	
 	if veryVerbose:
 		print('Size of difference array: ',ind_diff.shape)
 		plt.imshow(ind_diff)
@@ -168,23 +166,25 @@ def eventCoin(a, b, #two binary signals to compare
 		print('Calculating TRIGGER coincidence \n ----------------------------------')
 		
 		events = np.zeros((ind_diff.shape[1], len(win_fr)))
+		ind_diff[ind_diff > 0] = 0
 		
+		start_time = time.clock()
 		for i, win in enumerate(win_fr):
 			if verbose:
 				print('Calculating coincidence rate for window ' + str(win/fps) +'sec(s)')
 
-			new_diff = ind_diff / win
+			new_diff = -ind_diff / win
 			new_diff = 1 - new_diff
 			new_diff = (np.absolute(new_diff) + new_diff) / 2
 			binarized = np.ceil(new_diff)
 			mask_zeros = 1 - np.floor(new_diff)
 			binarized = np.multiply(binarized, mask_zeros)
 
-			row_sum = np.heaviside(np.sum(binarized, axis=1), 0)
-			events[:,i] = row_sum
-			# events[:,i] = np.ceil(row_sum / new_diff.shape[0])
+			row_sum = np.sum(binarized, axis=0)
+			events[:,i] = np.heaviside(row_sum, 0)
 		
 		rate_win = np.sum(events, axis=0)/nb
+		print("Took " + str(time.clock() - start_time) + " seconds.")
 					
 	if verbose:
 		plt.imshow(events, aspect = 'auto')
