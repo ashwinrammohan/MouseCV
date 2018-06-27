@@ -5,25 +5,32 @@ from hdf5manager import *
 from scipy.stats import poisson
 from derivativeEventDetection import detectSpikes
 
-def test_ROI_timecourse(brain_data, start_event = True, mid_event = True, end_event = True):
+def test_ROI_timecourse(brain_data, fps = 10, max_window = 2, start_event = True, mid_event = True, end_event = True):
 	binarized_data = np.zeros_like(brain_data).astype('uint8')
 	numRows = brain_data.shape[0]
 	start_spike_set = []
 	mid_spike_set = []
 	end_spike_set = []
-	eventMatrix = np.zeros((20,numRows,numRows))
-	pMatrix = np.zeros((20,numRows,numRows))
+	win_t = np.arange(0,max_window,1/fps)
+	eventMatrix = np.zeros((win_t.shape[0],numRows,numRows))
+	pMatrix = np.zeros((win_t.shape[0],numRows,numRows))
 
 	for i in range(brain_data.shape[0]):
 		dataRow = brain_data[i]
 		binarizedRow = np.zeros_like(dataRow)
 		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3)
 		for j in range(dataRow.shape[0]):
-			if j in start_spikes or j in mid_spikes or j in end_spikes:
+			check = False
+			if (start_event):
+				check = check or j in start_spikes
+			if (mid_event):
+				check = check or j in mid_spikes
+			if (end_event):
+				check = check or j in end_spikes
+			if (check):
 				binarizedRow[j] = 1
 		binarized_data[i,:] = binarizedRow
 
-	win_t = np.arange(0,2,1/10)
 	for i in range(numRows):
 		for j in range(numRows):
 			if (i != j):
@@ -32,8 +39,9 @@ def test_ROI_timecourse(brain_data, start_event = True, mid_event = True, end_ev
 				bin_tcs2 = binarized_data[j]
 				rand, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
 				eventMatrix[:,i,j] = rand
-				pMatrix[:,i,j] = getResults(rand, win_t=win_t, na=na, nb=nb, verbose = True, veryVerbose = False)
-
+				pMatrix[:,i,j] = getResults(rand, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, verbose = True, veryVerbose = False)
+			else:
+				eventMatrix[:,i,j] = np.NaN
 
 	print(eventMatrix[:,0,1])
 	print(pMatrix[:,0,1])
@@ -255,14 +263,33 @@ def getResults(rate_win,
 	
 	return (results)
 
-data = hdf5manager("P2_timecourses.hdf5").load()
-brain_data = data['brain'][:2,:]
-metadata = data['expmeta']
-print(brain_data.shape)
-eventMatrix, pMatrix = test_ROI_timecourse(brain_data)
-fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "expmeta": metadata}
-saveData = hdf5manager("MatrixData.hdf5")
-saveData.save(fileData)
 
-loadData = hdf5manager("MatrixData.hdf5").load()
-print(loadData['expmeta'])
+
+if __name__ == '__main__': 
+	import argparse
+
+	ap = argparse.ArgumentParser()
+	ap.add_argument('-i', '--input', 
+		nargs = 1, required = False, 
+		help = 'name of hdf5 input file with ICA-filtered timecourses')
+	# ap.add_argument('-e', '--experiment', 
+	#     nargs = 1, required = False, 
+	#     help = 'name of experiment (YYYYMMDD_EE) for loading associated files.\
+	#         Requires folder argument -f')
+	ap.add_argument('-f', '--folder', 
+		nargs = 1, required = False, 
+		help = 'name of folder to load hdf5 file and save output hdf5 file')
+	ap.add_argument('-o', '--output', type = argparse.FileType('a+'),
+		nargs = 1, required = False, 
+		help = 'path to the output experiment file to be written.  '
+		'Must be .hdf5 file.')
+	args = vars(ap.parse_args())
+
+	data = hdf5manager(args['input'][0]).load()
+	brain_data = data['brain'][:2,:]
+	metadata = data['expmeta']
+	print(brain_data.shape)
+	eventMatrix, pMatrix = test_ROI_timecourse(brain_data)
+	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "expmeta": metadata}
+	saveData = hdf5manager(args['output'][0])
+	saveData.save(fileData)
