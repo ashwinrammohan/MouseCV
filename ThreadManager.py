@@ -24,8 +24,6 @@ class ThreadManager:
 		print("Thread " + str(settings["finished_threads"]) + " completed \n")
 
 	def run(self, paths, data={}):
-		paths = paths[:16]
-
 		if (len(paths) > self.wanted_threads):
 			self.wanted_threads = len(paths)
 
