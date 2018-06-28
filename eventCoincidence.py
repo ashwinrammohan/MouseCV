@@ -44,20 +44,23 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 	end_spike_set = []
 	win_t = np.arange((1/fps),max_window,(1/fps))
 
+	print("Finding events...")
+
 	for i in range(brain_data.shape[0]):
 		dataRow = brain_data[i]
 		binarizedRow = np.zeros_like(dataRow)
+
+		start_time = time.clock()
 		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3)
-		for j in range(dataRow.shape[0]):
-			check = False
-			if (start_event):
-				check = check or j in start_spikes
-			if (not check and mid_event):
-				check = check or j in mid_spikes
-			if (not check and end_event):
-				check = check or j in end_spikes
-			if (check):
-				binarizedRow[j] = 1
+		print("Spikes at", i, "found in", (time.clock() - start_time), "seconds")
+
+		if start_event:
+			binarizedRow[start_spikes] = 1
+		if mid_event:
+			binarizedRow[mid_spikes] = 1
+		if end_event:
+			binarizedRow[end_spikes] = 1
+
 		binarized_data[i,:] = binarizedRow
 
 	if threads == 0:

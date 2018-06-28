@@ -107,7 +107,7 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 		i = spike - 1
 		done = False
 		while not(done): # walk backwards on the data until the beginning of the activity is detected
-			deriv = df[i]
+			deriv = df[i-1]
 			if (deriv <= deriv_start):
 				done = True
 			else:
@@ -129,7 +129,7 @@ def test_amplitude():
 
 	for limbKey in data.keys():
 		plt.figure("Limb: " + limbKey)
-		xs = list(np.linspace(0,len(data[limbKey]["magnitude"]),len(data[limbKey]["magnitude"])))
+		xs = np.linspace(0,len(data[limbKey]["magnitude"]),len(data[limbKey]["magnitude"]))
 		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[limbKey]["magnitude"], -0.1, second_deriv_batch=8, high_pass = 0.75, peak_height=0.25)
 
 		plt.plot(xs,vals)
