@@ -15,9 +15,10 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 		pResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0]))
 
 		for i in range(rowsLower, rowsUpper):
+			print("Comparing " + str(i) + " to all rows")
+			start_time = time.clock()
 			for j in range(numRows):
 				if (i != j):
-					print("Comparing " + str(i) + " to " + str(j))
 					bin_tcs1 = binarized_data[i]
 					bin_tcs2 = binarized_data[j]
 					event_data, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
@@ -26,6 +27,8 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 				else:
 					eventResults[i-rowsLower, j] = np.NaN
 					pResults[i-rowsLower, j] = np.NaN
+
+			print(str(i) + " to all rows took " + str(time.clock() - start_time) + " seconds")
 
 		eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
 		pNp = np.frombuffer(pMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
@@ -223,7 +226,8 @@ def eventCoin(a, b, #two binary signals to compare
 			plt.ylabel('Trigger coincidence rate')
 		plt.show()
 
-	print("Took " + str(time.clock() - overall_time) + " seconds total.")
+	if verbose:
+		print("Took " + str(time.clock() - overall_time) + " seconds total.")
 	return rate_win, na, nb
 
 def getResults(rate_win,              
@@ -320,11 +324,11 @@ if __name__ == '__main__':
 
 	data = hdf5manager(args['input'][0]).load()
 	brain_data = data['brain']
-	metadata = data['expmeta']
-	name = metadata['name']
+	# metadata = data['expmeta']
+	# name = metadata['name']
 
 	print(brain_data.shape)
 	eventMatrix, pMatrix = test_ROI_timecourse(brain_data)
 	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "expmeta": metadata}
-	saveData = hdf5manager(name + "_MatrixData_full.hdf5")
+	saveData = hdf5manager("P5_MatrixData_full.hdf5")
 	saveData.save(fileData)
