@@ -152,3 +152,16 @@ def test_amplitude():
 			plt.axvline(x = i, color = 'red')
 
 	plt.show()
+# data = hdf5manager("P2_timecourses.hdf5").load()
+# brain_data = data['brain'][0]
+# xs = np.linspace(0,len(brain_data), len(brain_data))
+# start_spikes, mid_spikes, end_spikes, vals = detectSpikes(brain_data, -0.3)
+
+# plt.plot(xs,vals)
+# for i in start_spikes:
+# 	plt.axvline(x = i, color = 'red')
+# for i in mid_spikes:
+# 	plt.axvline(x = i, color = (1,1,0,0.3))
+# for i in end_spikes:
+# 	plt.axvline(x = i, color = 'red')
+# plt.show()
