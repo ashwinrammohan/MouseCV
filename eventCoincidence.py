@@ -244,6 +244,8 @@ def getResults(rate_win,
 			  verbose = True,
 			  veryVerbose = False):
 	
+
+	start_time = time.clock()
 	#expected rate and stdev of the rate
 	if ratetype == 'precursor':
 		rho = 1 - win_t/(T - tau)
@@ -301,6 +303,7 @@ def getResults(rate_win,
 		plt.legend()
 		plt.show()
 	
+	print("time: " + str(time.clock() - start_time))
 	return (results)
 
 

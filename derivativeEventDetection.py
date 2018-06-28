@@ -75,50 +75,39 @@ def loadHDF5(file_name):
 def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start = 0, peak_height = 0, high_pass = 0.5):
 	data = butterworth(data, high = high_pass, low = None) # smooth/de-noise the data
 
-	past_deriv = 0
-	past_derivs = FixedQueue(second_deriv_batch)
-	future_dervis = FixedQueue(second_deriv_batch)
-	spikes = [] # the top of each spike will be stored here
+	df = data[1:] - data[:-1] # get derivates
+
+	binary_df = np.copy(df) # copy derivates
+	binary_df[binary_df < 0] = -1 # make derivates binarized (-1 if negative, 1 if positive, 0 if 0)
+	binary_df[binary_df > 0] = 1
+
+	binary_dff = binary_df[1:] - binary_df[:-1] # get binarized second derivates
+	df_peaks = np.where(binary_dff < 0)[0] + 1 # get indecies of possible peaks from first deriv test
+
+	df_batches = np.copy(df[second_deriv_batch-1:]) # get sum of derivates in batches of `second_deriv_batch`
+	for i in range(second_deriv_batch-1):
+		lower = i
+		upper = second_deriv_batch - i - 1
+		df_batches += df[lower : -upper]
+
+	dff_batches = df_batches[second_deriv_batch:] - df_batches[:-second_deriv_batch] # get differences of batches
+	dff_peaks = np.where(dff_batches < second_deriv_thresh)[0] + second_deriv_batch # get indecies of possible peaks from second deriv test
+
+	end_spikes = list(np.intersect1d(df_peaks, dff_peaks) + 1)
+
 	if (peak_height == 0):
 		peak_height = np.std(data)/3 # if no peak_height is given, the standard deviation is used to guess a good min height
-		#("Min peak height: " + str(peak_height))
-
-	# initialize past batch
-	for i in range(1, second_deriv_batch+1):
-		deriv = data[i] - data[i-1]
-		past_deriv = deriv
-		past_derivs.add_value(deriv)
-
-	# initialize future batch
-	for i in range(second_deriv_batch+2, 2*second_deriv_batch+2):
-		deriv = data[i] - data[i-1]
-		future_dervis.add_value(deriv)
-
-	# calculate spikes
-	for i in range(second_deriv_batch+1, len(data) - second_deriv_batch-1):
-		deriv = data[i] - data[i-1] # first derivative
-
-		deriv_test = (deriv < 0 and past_deriv >= 0) # whether there is a peak of any kind (positive slope to negative slope)
-		second_deriv_test = ((future_dervis.sum - past_derivs.sum) < second_deriv_thresh) # whether the peak is extreme enough 
-		if deriv_test and second_deriv_test:
-			spikes.append(i)
-
-		past_deriv = deriv
-		past_derivs.add_value(deriv) # update past derivs
-
-		deriv = data[i+second_deriv_batch+1] - data[i+second_deriv_batch]
-		future_dervis.add_value(deriv) # update future derivs
 
 	# find activity duration
 	i = 0
 	start_spikes = [] # will hold the beginning of each spike, using the `deriv_start` parameter
 	mid_spikes = [] # will hold all indicies within activities. This is mostly used for graphing
-	for j in range(len(spikes)-1, -1, -1): # iterate backwards so that spikes can be removed without issue
-		spike = spikes[j]
+	for j in range(len(end_spikes)-1, -1, -1): # iterate backwards so that spikes can be removed without issue
+		spike = end_spikes[j]
 		i = spike - 1
 		done = False
 		while not(done): # walk backwards on the data until the beginning of the activity is detected
-			deriv = data[i] - data[i-1]
+			deriv = df[i]
 			if (deriv <= deriv_start):
 				done = True
 			else:
@@ -127,13 +116,13 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 					done = True
 
 		if data[spike] - data[i] < peak_height: # check whether the total height of the peak is enough
-			del spikes[j]
+			del end_spikes[j]
 		else:
 			start_spikes.append(i)
 			for h in range(spike-1, i, -1):
 				mid_spikes.append(h)
 
-	return (start_spikes, mid_spikes, spikes, data)
+	return (start_spikes, mid_spikes, end_spikes, data)
 	
 def test_amplitude():
 	data = loadHDF5("mouse_vectors")
@@ -144,6 +133,7 @@ def test_amplitude():
 		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[limbKey]["magnitude"], -0.1, second_deriv_batch=8, high_pass = 0.75, peak_height=0.25)
 
 		plt.plot(xs,vals)
+		print("new code", limbKey, start_spikes)
 		for i in start_spikes:
 			plt.axvline(x = i, color = 'red')
 		for i in mid_spikes:
@@ -152,3 +142,4 @@ def test_amplitude():
 			plt.axvline(x = i, color = 'red')
 
 	plt.show()
+test_amplitude()
