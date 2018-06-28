@@ -122,29 +122,6 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 	#return start_spike_set
 	'''
 
-def plot_event_Coincidence_Rates(start_spike_set, size):
-	print(len(start_spike_set))
-	bins = np.arange(100,size+100,100)
-	eventCoincidenceRates = []
-	for i in range(len(start_spike_set)):
-		start_spikes = start_spike_set[i]
-		for j in range(0,bins.shape[0]):
-			start = bins[j] - 100
-			end = bins[j]
-			num_events = 0
-			for k in range(len(start_spikes)):
-				if (start_spikes[k] >= start and start_spikes[k] <= end):
-					num_events +=1
-			#print("(" + str(start) + " to " + str(end) + "): " + str(num_events/10))
-			eventCoincidenceRates.append(num_events/10)
-	max_val = max(eventCoincidenceRates)
-	print(str(max_val) + " occurred " + str(eventCoincidenceRates.count(max_val)) + " times")
-	plt.hist(np.asarray(eventCoincidenceRates),6), plt.xlabel("Number of events/10 seconds"), plt.ylabel("Number of Occurrences")
-	plt.title("Event Coincidence Rate Analysis")
-	plt.show()
-
-
-
 def eventCoin(a, b, #two binary signals to compare
 			  win_t, #vector of time (s) for window
 			  na = None, nb = None, #number of total events in each comparitive vector
