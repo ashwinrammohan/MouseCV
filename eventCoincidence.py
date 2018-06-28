@@ -223,7 +223,7 @@ def eventCoin(a, b, #two binary signals to compare
 				print('Calculating TRIGGER coincidence rate for window ' + str(win/fps) +'sec(s)')
 
 			results[ind_diff < win] = 1
-			row_sum = np.heaviside(np.sum(results, axis=1), 0)
+			row_sum = np.heaviside(np.sum(results, axis=0), 0)
 			events[:,i] = row_sum
 
 		rate_win = np.sum(events, axis=0)/nb
