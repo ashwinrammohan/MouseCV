@@ -15,9 +15,10 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 		pResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0]))
 
 		for i in range(rowsLower, rowsUpper):
+			print("Comparing " + str(i) + " to all rows")
+			start_time = time.clock()
 			for j in range(numRows):
 				if (i != j):
-					print("Comparing " + str(i) + " to " + str(j))
 					bin_tcs1 = binarized_data[i]
 					bin_tcs2 = binarized_data[j]
 					event_data, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
@@ -26,6 +27,8 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 				else:
 					eventResults[i-rowsLower, j] = np.NaN
 					pResults[i-rowsLower, j] = np.NaN
+
+			print(str(i) + " to all rows took " + str(time.clock() - start_time) + " seconds")
 
 		eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
 		pNp = np.frombuffer(pMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
@@ -86,8 +89,8 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 	eventMatrix = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
 	pMatrix = np.frombuffer(pMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
 
-	print(eventMatrix[:,:,7])
-	print(pMatrix[:,:,7])
+	#print(eventMatrix[:,:,7])
+	#print(pMatrix[:,:,7])
 	return eventMatrix, pMatrix
 
 	#plt.plot(xs,vals)
@@ -131,82 +134,84 @@ def eventCoin(a, b, #two binary signals to compare
 			  verbose = True,
 			  veryVerbose = False):
 	
-	if na == None:
-		na = sum(a)
-	if nb == None:
-		nb = sum(b)
+	overall_time = time.clock()
+	start_time = time.clock()
 	
 	#find all indices for each event
-	a_ind = [i for i, e in enumerate(a) if e != 0]
-	b_ind = [i for i, e in enumerate(b) if e != 0]
+	a_ind = np.where(a != 0)[0]
+	b_ind = np.where(b != 0)[0]
+
+	if na == None:
+		na = a_ind.shape[0]
+	if nb == None:
+		nb = b_ind.shape[0]
+
+	if na == 0 or nb == 0:
+		return np.repeat(np.NaN, len(win_t)), na, nb
 	
 	#convert window times to window frames
 	win_fr = win_t * fps 
 	
 	#create index difference matrix
 	ind_diff = np.zeros((len(a_ind), len(b_ind)))
-
 	for i,inda in enumerate(a_ind): # rows
-		for j,indb in enumerate(b_ind): # columns
-			ind_diff [i,j]= inda - (tau*fps) - indb	
+		ind_diff[i] = inda - (tau*fps) - b_ind
+
+	#replace all neg values with 0	
+	if veryVerbose:
+		print('Size of difference array: ', ind_diff.shape)
+		plt.imshow(ind_diff)
+		plt.title('Difference in indices')
+		plt.xlabel('indices from list a')
+		plt.ylabel('indices from list b')
+		plt.colorbar()
+		plt.show()
+
+	if verbose:
+		print("Setup time: " + str(time.clock() - start_time))
 
 	#create event matrix
 	if ratetype == 'precursor':
 		#print('Calculating PRECURSOR coincidence \n ----------------------------------')
 
-		events = np.zeros((ind_diff.shape[0], len(win_fr)))
-		ind_diff[ind_diff < 0] = 0 #max(win_fr)*1.5
-		if veryVerbose:
-			print('Size of difference array: ',ind_diff.shape)
-			plt.imshow(ind_diff)
-			plt.title('Difference in indices')
-			plt.xlabel('indices from list a')
-			plt.ylabel('indices from list b')
-			plt.colorbar()
-			plt.show()
 		start_time = time.clock()
+		events = np.zeros((ind_diff.shape[0], len(win_fr)))
+		ind_diff[ind_diff <= 0] = max(win_fr)+1
+		results = np.zeros_like(ind_diff)
 
 		for i, win in enumerate(win_fr):
 			if verbose:
 				print('Calculating PRECURSOR coincidence rate for window ' + str(win/fps) +'sec(s)')
 
-			new_diff = ind_diff / win
-			new_diff = 1 - new_diff
-			new_diff = (np.absolute(new_diff) + new_diff) / 2
-			binarized = np.ceil(new_diff)
-			mask_zeros = 1 - np.floor(new_diff)
-			binarized = np.multiply(binarized, mask_zeros)
-
-			row_sum = np.heaviside(np.sum(binarized, axis=1), 0)
+			results[ind_diff < win] = 1
+			row_sum = np.heaviside(np.sum(results, axis=1), 0)
 			events[:,i] = row_sum
-			# events[:,i] = np.ceil(row_sum / new_diff.shape[0])
 
 		rate_win = np.sum(events, axis=0)/na
-		print("Took " + str(time.clock() - start_time) + " seconds.")
+
+		if verbose:
+			print("Took " + str(time.clock() - start_time) + " seconds.")
 
 	if ratetype == 'trigger':
 		#print('Calculating TRIGGER coincidence \n ----------------------------------')
 		
-		events = np.zeros((ind_diff.shape[1], len(win_fr)))
-		ind_diff[ind_diff > 0] = 0
-		
 		start_time = time.clock()
+		events = np.zeros((ind_diff.shape[1], len(win_fr)))
+		ind_diff[ind_diff >= 0] = -(max(win_fr) + 1)
+		ind_diff = -ind_diff
+		results = np.zeros_like(ind_diff)
+
 		for i, win in enumerate(win_fr):
 			if verbose:
-				print('Calculating coincidence rate for window ' + str(win/fps) +'sec(s)')
+				print('Calculating TRIGGER coincidence rate for window ' + str(win/fps) +'sec(s)')
 
-			new_diff = -ind_diff / win
-			new_diff = 1 - new_diff
-			new_diff = (np.absolute(new_diff) + new_diff) / 2
-			binarized = np.ceil(new_diff)
-			mask_zeros = 1 - np.floor(new_diff)
-			binarized = np.multiply(binarized, mask_zeros)
+			results[ind_diff < win] = 1
+			row_sum = np.heaviside(np.sum(results, axis=0), 0)
+			events[:,i] = row_sum
 
-			row_sum = np.sum(binarized, axis=0)
-			events[:,i] = np.heaviside(row_sum, 0)
-		
 		rate_win = np.sum(events, axis=0)/nb
-		print("Took " + str(time.clock() - start_time) + " seconds.")
+		if verbose:
+			print("Took " + str(time.clock() - start_time) + " seconds.")
 					
 	if verbose:
 		plt.imshow(events, aspect = 'auto')
@@ -224,6 +229,8 @@ def eventCoin(a, b, #two binary signals to compare
 			plt.ylabel('Trigger coincidence rate')
 		plt.show()
 
+	if verbose:
+		print("Took " + str(time.clock() - overall_time) + " seconds total.")
 	return rate_win, na, nb
 
 def getResults(rate_win,              
@@ -320,11 +327,11 @@ if __name__ == '__main__':
 
 	data = hdf5manager(args['input'][0]).load()
 	brain_data = data['brain']
-	metadata = data['expmeta']
-	name = metadata['name']
+	# metadata = data['expmeta']
+	# name = metadata['name']
 
 	print(brain_data.shape)
 	eventMatrix, pMatrix = test_ROI_timecourse(brain_data)
 	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "expmeta": metadata}
-	saveData = hdf5manager(name + "_MatrixData_full.hdf5")
+	saveData = hdf5manager("P5_MatrixData_full.hdf5")
 	saveData.save(fileData)
