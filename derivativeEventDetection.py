@@ -142,4 +142,3 @@ def test_amplitude():
 			plt.axvline(x = i, color = 'red')
 
 	plt.show()
-test_amplitude()
