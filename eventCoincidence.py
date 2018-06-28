@@ -134,17 +134,20 @@ def eventCoin(a, b, #two binary signals to compare
 			  verbose = True,
 			  veryVerbose = False):
 	
-	if na == None:
-		na = sum(a)
-	if nb == None:
-		nb = sum(b)
-
 	overall_time = time.clock()
 	start_time = time.clock()
 	
 	#find all indices for each event
 	a_ind = np.where(a != 0)[0]
 	b_ind = np.where(b != 0)[0]
+
+	if na == None:
+		na = a_ind.shape[0]
+	if nb == None:
+		nb = b_ind.shape[0]
+
+	if na == 0 or nb == 0:
+		return np.repeat(np.NaN, len(win_t)), na, nb
 	
 	#convert window times to window frames
 	win_fr = win_t * fps 
