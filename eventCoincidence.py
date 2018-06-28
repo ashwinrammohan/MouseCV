@@ -5,21 +5,33 @@ from hdf5manager import *
 from scipy.stats import poisson
 from derivativeEventDetection import detectSpikes
 import time
-from multiprocessing import Process, Manager, cpu_count
+from multiprocessing import Process, Array, cpu_count
+import ctypes as c
 
-def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, persistData, brain_data, fps):
+def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix, pMatrix, brain_data, fps):
 		print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
+
+		eventResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0]))
+		pResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0]))
+
 		for i in range(rowsLower, rowsUpper):
 			for j in range(numRows):
 				if (i != j):
 					print("Comparing " + str(i) + " to " + str(j))
 					bin_tcs1 = binarized_data[i]
 					bin_tcs2 = binarized_data[j]
-					event_data, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = True, veryVerbose = False)
-					persistData["eventMatrix"][:,i,j] = event_data
-					persistData["pMatrix"][:,i,j] = getResults(event_data, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
+					event_data, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
+					eventResults[i-rowsLower, j] = event_data
+					pResults[i-rowsLower, j] = getResults(event_data, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
 				else:
-					persistData["eventMatrix"][:,i,j] = np.NaN
+					eventResults[i-rowsLower, j] = np.NaN
+					pResults[i-rowsLower, j] = np.NaN
+
+		eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
+		pNp = np.frombuffer(pMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
+
+		eventNp[rowsLower:rowsUpper] = eventResults
+		pNp[rowsLower:rowsUpper] = pResults
 
 def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, mid_event = True, end_event = True, threads = 0):
 	binarized_data = np.zeros_like(brain_data).astype('uint8')
@@ -53,10 +65,9 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 	threads = []
 	print("Creating " + str(wanted_threads) + " threads...")
 
-	persistData = Manager().dict()
-	persistData["eventMatrix"] = np.zeros((win_t.shape[0],numRows,numRows))
-	persistData["pMatrix"] = np.zeros((win_t.shape[0],numRows,numRows))
-	print("Created manager dictionary")
+	eventMatrix = Array(c.c_double, numRows*numRows*win_t.shape[0])
+	pMatrix = Array(c.c_double, numRows*numRows*win_t.shape[0]) 
+	print("Created empty data arrays")
 
 	dataPer = int(numRows / wanted_threads)
 	upper = 0
@@ -64,21 +75,19 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 		lower = i*dataPer
 		upper = (i+1)*dataPer
 
-		p = Process(target=_eventCoin, args=(lower, upper, numRows, binarized_data, win_t, persistData, brain_data, fps))
+		p = Process(target=_eventCoin, args=(lower, upper, numRows, binarized_data, win_t, eventMatrix, pMatrix, brain_data, fps))
 		p.start()
 		threads.append(p)
 
-	_eventCoin(upper, numRows, numRows, binarized_data, win_t, persistData, brain_data, fps)
+	_eventCoin(upper, numRows, numRows, binarized_data, win_t, eventMatrix, pMatrix, brain_data, fps)
 	for p in threads:
 		p.join()
 
-	eventMatrix = persistData["eventMatrix"]
-	pMatrix = persistData["pMatrix"]
+	eventMatrix = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
+	pMatrix = np.frombuffer(pMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
 
-	print(eventMatrix[:,0,1])
-	print(pMatrix[:,0,1])
-	print(eventMatrix[:,1,0])
-	print(pMatrix[:,1,0])
+	print(eventMatrix[:,:,7])
+	print(pMatrix[:,:,7])
 	return eventMatrix, pMatrix
 
 	#plt.plot(xs,vals)
@@ -162,24 +171,22 @@ def eventCoin(a, b, #two binary signals to compare
 
 	for i,inda in enumerate(a_ind): # rows
 		for j,indb in enumerate(b_ind): # columns
-			ind_diff [i,j]= inda - (tau*fps) - indb
-
-	#replace all neg values with 0	
-	if veryVerbose:
-		print('Size of difference array: ',ind_diff.shape)
-		plt.imshow(ind_diff)
-		plt.title('Difference in indices')
-		plt.xlabel('indices from list a')
-		plt.ylabel('indices from list b')
-		plt.colorbar()
-		plt.show()
+			ind_diff [i,j]= inda - (tau*fps) - indb	
 
 	#create event matrix
 	if ratetype == 'precursor':
 		#print('Calculating PRECURSOR coincidence \n ----------------------------------')
 
 		events = np.zeros((ind_diff.shape[0], len(win_fr)))
-		ind_diff[ind_diff > 0] = 0 #max(win_fr)*1.5
+		ind_diff[ind_diff < 0] = 0 #max(win_fr)*1.5
+		if veryVerbose:
+			print('Size of difference array: ',ind_diff.shape)
+			plt.imshow(ind_diff)
+			plt.title('Difference in indices')
+			plt.xlabel('indices from list a')
+			plt.ylabel('indices from list b')
+			plt.colorbar()
+			plt.show()
 		start_time = time.clock()
 
 		for i, win in enumerate(win_fr):
@@ -204,7 +211,7 @@ def eventCoin(a, b, #two binary signals to compare
 		#print('Calculating TRIGGER coincidence \n ----------------------------------')
 		
 		events = np.zeros((ind_diff.shape[1], len(win_fr)))
-		ind_diff[ind_diff < 0] = 0
+		ind_diff[ind_diff > 0] = 0
 		
 		start_time = time.clock()
 		for i, win in enumerate(win_fr):
@@ -335,12 +342,12 @@ if __name__ == '__main__':
 	args = vars(ap.parse_args())
 
 	data = hdf5manager(args['input'][0]).load()
-	brain_data = data['brain'][:2,:]
+	brain_data = data['brain']
 	metadata = data['expmeta']
 	name = metadata['name']
 
 	print(brain_data.shape)
-	eventMatrix, pMatrix = test_ROI_timecourse(brain_data, threads=1)
+	eventMatrix, pMatrix = test_ROI_timecourse(brain_data)
 	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "expmeta": metadata}
-	saveData = hdf5manager(name + "_MatrixData.hdf5")
+	saveData = hdf5manager(name + "_MatrixData_full.hdf5")
 	saveData.save(fileData)
