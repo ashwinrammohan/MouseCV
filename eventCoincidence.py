@@ -18,6 +18,9 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 			print("Comparing " + str(i) + " to all rows")
 			start_time = time.clock()
 			for j in range(numRows):
+				if (j % 50 == 0 and j > 0):
+					print(str(j) + " comparisons done, t = " + str(time.clock() - start_time))
+
 				if (i != j):
 					bin_tcs1 = binarized_data[i]
 					bin_tcs2 = binarized_data[j]
