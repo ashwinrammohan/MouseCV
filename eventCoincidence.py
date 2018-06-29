@@ -261,26 +261,21 @@ def getResults(rate_win,
 	
 	#quantiles used for graphing
 	if verbose:
-		perc = np.array([1, 2.5, 25, 50, 75, 97.5, 99])
+		perc = np.array([1, 2.5, 25, 50, 75, 97.5, 99])/100
 		mark = ['k:', 'k-.', 'k--', 'k-', 'k--','k-.', 'k:']
 		quantile = np.zeros((exp_rate.shape[0], perc.shape[0]))
 
-	#number samples for null hypothesis
-	k=10000
-
-	sample = np.zeros((exp_rate.shape[0], k))
 	results = np.zeros(exp_rate.shape[0])
 
 	for i, r in enumerate(exp_rate):
-		sample[i,:] = poisson.rvs(r, size=k)
 		if ratetype == 'precursor':
 			if verbose:
-				quantile[i,:] = np.percentile(sample[i,:], perc)/na
-			results[i] = sum(rate_win[i] < sample[i, :]/na)/k
+				quantile[i,:] = poisson.ppf(perc, r)/na
+			results[i] = poisson.cdf(rate_win[i]*na,r)
 		if ratetype == 'trigger':
 			if verbose:
-				quantile[i,:] = np.percentile(sample[i,:], perc)/nb
-			results[i] = sum(rate_win[i] < sample[i, :]/nb)/k
+				quantile[i,:] = poisson.ppf(perc, r)/nb
+			results[i] = poisson.cdf(rate_win[i]*nb,r)
 		if veryVerbose:
 			print(str(win_t[i]) + 'sec(s) time window produces a p value: ' + str(results[i]))
 
@@ -289,13 +284,6 @@ def getResults(rate_win,
 			if r < 0.05:
 				print(str(win_t[j]) + 'sec(s) time window produces a significant value: p=' + str(r))
 	
-	# plot sample values
-	if veryVerbose:
-		plt.imshow(sample, aspect = 'auto')
-		plt.colorbar()
-		plt.show()
-
-	if verbose:
 		for i in range(len(perc)):
 			plt.plot(win_t, quantile[:, i], mark[i], label=perc[i])
 

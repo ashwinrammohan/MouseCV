@@ -6,9 +6,12 @@ from scipy.stats import poisson
 import cv2 as cv
 import sys
 
-path_file = open("path.txt", "r")
-sys.path.append(path_file.read())
-path_file.close()
+try:
+	path_file = open("path.txt", "r")
+	sys.path.append(path_file.read())
+	path_file.close()
+except:
+	pass
 
 from timecourseAnalysis import butterworth
 
