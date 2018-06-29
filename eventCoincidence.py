@@ -47,20 +47,23 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 	end_spike_set = []
 	win_t = np.arange((1/fps),max_window,(1/fps))
 
+	print("Finding events...")
+
 	for i in range(brain_data.shape[0]):
 		dataRow = brain_data[i]
 		binarizedRow = np.zeros_like(dataRow)
+
+		start_time = time.clock()
 		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3)
-		for j in range(dataRow.shape[0]):
-			check = False
-			if (start_event):
-				check = check or j in start_spikes
-			if (not check and mid_event):
-				check = check or j in mid_spikes
-			if (not check and end_event):
-				check = check or j in end_spikes
-			if (check):
-				binarizedRow[j] = 1
+		print("Spikes at", i, "found in", (time.clock() - start_time), "seconds")
+
+		if start_event:
+			binarizedRow[start_spikes] = 1
+		if mid_event:
+			binarizedRow[mid_spikes] = 1
+		if end_event:
+			binarizedRow[end_spikes] = 1
+
 		binarized_data[i,:] = binarizedRow
 
 	if threads == 0:
@@ -247,6 +250,8 @@ def getResults(rate_win,
 			  verbose = True,
 			  veryVerbose = False):
 	
+
+	start_time = time.clock()
 	#expected rate and stdev of the rate
 	if ratetype == 'precursor':
 		rho = 1 - win_t/(T - tau)
@@ -259,26 +264,21 @@ def getResults(rate_win,
 	
 	#quantiles used for graphing
 	if verbose:
-		perc = np.array([1, 2.5, 25, 50, 75, 97.5, 99])
+		perc = np.array([1, 2.5, 25, 50, 75, 97.5, 99])/100
 		mark = ['k:', 'k-.', 'k--', 'k-', 'k--','k-.', 'k:']
 		quantile = np.zeros((exp_rate.shape[0], perc.shape[0]))
 
-	#number samples for null hypothesis
-	k=10000
-
-	sample = np.zeros((exp_rate.shape[0], k))
 	results = np.zeros(exp_rate.shape[0])
 
 	for i, r in enumerate(exp_rate):
-		sample[i,:] = poisson.rvs(r, size=k)
 		if ratetype == 'precursor':
 			if verbose:
-				quantile[i,:] = np.percentile(sample[i,:], perc)/na
-			results[i] = sum(rate_win[i] < sample[i, :]/na)/k
+				quantile[i,:] = poisson.ppf(perc, r)/na
+			results[i] = poisson.cdf(rate_win[i]*na,r)
 		if ratetype == 'trigger':
 			if verbose:
-				quantile[i,:] = np.percentile(sample[i,:], perc)/nb
-			results[i] = sum(rate_win[i] < sample[i, :]/nb)/k
+				quantile[i,:] = poisson.ppf(perc, r)/nb
+			results[i] = poisson.cdf(rate_win[i]*nb,r)
 		if veryVerbose:
 			print(str(win_t[i]) + 'sec(s) time window produces a p value: ' + str(results[i]))
 
@@ -287,13 +287,6 @@ def getResults(rate_win,
 			if r < 0.05:
 				print(str(win_t[j]) + 'sec(s) time window produces a significant value: p=' + str(r))
 	
-	# plot sample values
-	if veryVerbose:
-		plt.imshow(sample, aspect = 'auto')
-		plt.colorbar()
-		plt.show()
-
-	if verbose:
 		for i in range(len(perc)):
 			plt.plot(win_t, quantile[:, i], mark[i], label=perc[i])
 
@@ -304,6 +297,7 @@ def getResults(rate_win,
 		plt.legend()
 		plt.show()
 	
+	print("time: " + str(time.clock() - start_time))
 	return (results)
 
 
