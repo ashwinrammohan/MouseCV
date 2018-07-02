@@ -38,6 +38,10 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 					disp_time = time.clock()
 
 				processed += 1
+
+				if (j % 50 == 0 and j > 0):
+					print(str(j) + " comparisons done, t = " + str(time.clock() - start_time))
+
 				if (i != j):
 					bin_tcs1 = binarized_data[i]
 					bin_tcs2 = binarized_data[j]
@@ -379,6 +383,9 @@ def visualizeProgress(window_name, i, j, avg_na, avg_nb, time_elapsed, avg_dt, p
 	cv.rectangle(img, (25, 315), (400, 350), (255, 255, 255), 1)
 	cv.rectangle(img, (25, 315), (int(375 * processed / needed) + 25, 350), (255, 255, 255), -1)
 	cv.putText(img, "(" + str(processed) + "/" + str(needed) + ")", (25, 385), cv.FONT_HERSHEY_SIMPLEX, 1, 1)
+
+	print("time: " + str(time.clock() - start_time))
+	return (results)
 
 	cv.imshow(window_name, img)
 	cv.moveWindow(window_name, pos[0], pos[1])
