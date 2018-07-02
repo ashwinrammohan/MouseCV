@@ -3,38 +3,67 @@ import matplotlib
 from matplotlib import pyplot as plt
 from hdf5manager import *
 from scipy.stats import poisson
-from derivativeEventDetection import detectSpikes
+from derivativeEventDetection import detectSpikes, FixedQueue
 import time
-from multiprocessing import Process, Array, cpu_count
+from multiprocessing import Process, Array, cpu_count, Manager
 import ctypes as c
+import cv2 as cv
 
-def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix, pMatrix, brain_data, fps):
+def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix, pMatrix, brain_data, fps, dispDict, name):
 		print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
+		avg_na = FixedQueue(20)
+		avg_nb = FixedQueue(20)
+		total_time = time.clock()
+		avg_dt = FixedQueue(20)
+		dt = time.clock()
+		processed = 0
+		needed = (rowsUpper - rowsLower) * numRows
+		dispDict["needed_"+name] = needed
+		disp_time = 0
 
 		eventResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0]))
 		pResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0]))
 
 		for i in range(rowsLower, rowsUpper):
-			print("Comparing " + str(i) + " to all rows")
-			start_time = time.clock()
 			for j in range(numRows):
+				
+				if time.clock() - disp_time >= 1:
+					dispDict["i_"+name] = i
+					dispDict["j_"+name] = j
+					dispDict["avg_na_"+name] = avg_na.sum/20
+					dispDict["avg_nb_"+name] = avg_nb.sum/20
+					dispDict["total_time_"+name] = time.clock() - total_time
+					dispDict["avg_dt_"+name] = avg_dt.sum/20
+					dispDict["processed_"+name] = processed
+					disp_time = time.clock()
+
+				processed += 1
 				if (i != j):
 					bin_tcs1 = binarized_data[i]
 					bin_tcs2 = binarized_data[j]
 					event_data, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
 					eventResults[i-rowsLower, j] = event_data
 					pResults[i-rowsLower, j] = getResults(event_data, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
+
+					avg_dt.add_value(time.clock() - dt)
+					dt = time.clock()
+					avg_na.add_value(na)
+					avg_nb.add_value(nb)
 				else:
 					eventResults[i-rowsLower, j] = np.NaN
 					pResults[i-rowsLower, j] = np.NaN
 
-			print(str(i) + " to all rows took " + str(time.clock() - start_time) + " seconds")
 
 		eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
 		pNp = np.frombuffer(pMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
 
 		eventNp[rowsLower:rowsUpper] = eventResults
 		pNp[rowsLower:rowsUpper] = pResults
+		dispDict["done"] += 1
+		dispDict["i_"+name] = i
+		dispDict["j_"+name] = j
+		dispDict["total_time_"+name] = time.clock() - total_time
+		dispDict["processed_"+name] = processed
 
 def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, mid_event = True, end_event = True, threads = 0):
 	binarized_data = np.zeros_like(brain_data).astype('uint8')
@@ -44,20 +73,23 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 	end_spike_set = []
 	win_t = np.arange((1/fps),max_window,(1/fps))
 
+	print("Finding events...")
+
 	for i in range(brain_data.shape[0]):
 		dataRow = brain_data[i]
 		binarizedRow = np.zeros_like(dataRow)
+
+		start_time = time.clock()
 		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3)
-		for j in range(dataRow.shape[0]):
-			check = False
-			if (start_event):
-				check = check or j in start_spikes
-			if (not check and mid_event):
-				check = check or j in mid_spikes
-			if (not check and end_event):
-				check = check or j in end_spikes
-			if (check):
-				binarizedRow[j] = 1
+		print("Spikes at", i, "found in", (time.clock() - start_time), "seconds")
+
+		if start_event:
+			binarizedRow[start_spikes] = 1
+		if mid_event:
+			binarizedRow[mid_spikes] = 1
+		if end_event:
+			binarizedRow[end_spikes] = 1
+
 		binarized_data[i,:] = binarizedRow
 
 	if threads == 0:
@@ -70,24 +102,48 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 
 	eventMatrix = Array(c.c_double, numRows*numRows*win_t.shape[0])
 	pMatrix = Array(c.c_double, numRows*numRows*win_t.shape[0]) 
+	displayDict = Manager().dict()
+	displayDict["done"] = 0
+	index_map = []
+	for i in range(wanted_threads):
+		index_map.extend(list(np.arange(i,brain_data.shape[0],wanted_threads)))
+
+	index_map = np.asarray(index_map)
+	inv_index_map = np.argsort(index_map)
 	print("Created empty data arrays")
 
 	dataPer = int(numRows / wanted_threads)
 	upper = 0
-	for i in range(wanted_threads-1):
-		lower = i*dataPer
-		upper = (i+1)*dataPer
+	names = []
+	for i in range(wanted_threads):
+		name = "Thread " + str(i+1)
+		names.append(name)
 
-		p = Process(target=_eventCoin, args=(lower, upper, numRows, binarized_data, win_t, eventMatrix, pMatrix, brain_data, fps))
+		displayDict["i_"+name] = 0
+		displayDict["j_"+name] = 0
+		displayDict["avg_na_"+name] = 0
+		displayDict["avg_nb_"+name] = 0
+		displayDict["total_time_"+name] = 0
+		displayDict["avg_dt_"+name] = 0
+		displayDict["processed_"+name] = 0
+		displayDict["needed_"+name] = 1
+
+		if i == wanted_threads-1:
+			p = Process(target=_eventCoin, args=(upper, numRows, numRows, binarized_data[index_map][:,index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name))
+		else:
+			lower = i*dataPer
+			upper = (i+1)*dataPer
+			p = Process(target=_eventCoin, args=(lower, upper, numRows, binarized_data[index_map][:,index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name))
 		p.start()
 		threads.append(p)
 
-	_eventCoin(upper, numRows, numRows, binarized_data, win_t, eventMatrix, pMatrix, brain_data, fps)
-	for p in threads:
-		p.join()
+	_displayInfo(displayDict, wanted_threads, names)
 
-	eventMatrix = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
-	pMatrix = np.frombuffer(pMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
+	# for p in threads:
+	# 	p.join()
+
+	eventMatrix = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))[inv_index_map][:,inv_index_map]
+	pMatrix = np.frombuffer(pMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))[inv_index_map][:,inv_index_map]
 
 	#print(eventMatrix[:,:,7])
 	#print(pMatrix[:,:,7])
@@ -146,7 +202,7 @@ def eventCoin(a, b, #two binary signals to compare
 	if nb == None:
 		nb = b_ind.shape[0]
 
-	if na == 0 or nb == 0:
+	if na == 0:
 		return np.repeat(np.NaN, len(win_t)), na, nb
 	
 	#convert window times to window frames
@@ -244,6 +300,10 @@ def getResults(rate_win,
 			  verbose = True,
 			  veryVerbose = False):
 	
+	if na == 0 or nb == 0:
+		return np.ones(win_t.shape[0])
+
+	start_time = time.clock()
 	#expected rate and stdev of the rate
 	if ratetype == 'precursor':
 		rho = 1 - win_t/(T - tau)
@@ -256,26 +316,21 @@ def getResults(rate_win,
 	
 	#quantiles used for graphing
 	if verbose:
-		perc = np.array([1, 2.5, 25, 50, 75, 97.5, 99])
+		perc = np.array([1, 2.5, 25, 50, 75, 97.5, 99])/100
 		mark = ['k:', 'k-.', 'k--', 'k-', 'k--','k-.', 'k:']
 		quantile = np.zeros((exp_rate.shape[0], perc.shape[0]))
 
-	#number samples for null hypothesis
-	k=10000
-
-	sample = np.zeros((exp_rate.shape[0], k))
 	results = np.zeros(exp_rate.shape[0])
 
 	for i, r in enumerate(exp_rate):
-		sample[i,:] = poisson.rvs(r, size=k)
 		if ratetype == 'precursor':
 			if verbose:
-				quantile[i,:] = np.percentile(sample[i,:], perc)/na
-			results[i] = sum(rate_win[i] < sample[i, :]/na)/k
+				quantile[i,:] = poisson.ppf(perc, r)/na
+			results[i] = poisson.cdf(rate_win[i]*na,r)
 		if ratetype == 'trigger':
 			if verbose:
-				quantile[i,:] = np.percentile(sample[i,:], perc)/nb
-			results[i] = sum(rate_win[i] < sample[i, :]/nb)/k
+				quantile[i,:] = poisson.ppf(perc, r)/nb
+			results[i] = poisson.cdf(rate_win[i]*nb,r)
 		if veryVerbose:
 			print(str(win_t[i]) + 'sec(s) time window produces a p value: ' + str(results[i]))
 
@@ -284,13 +339,6 @@ def getResults(rate_win,
 			if r < 0.05:
 				print(str(win_t[j]) + 'sec(s) time window produces a significant value: p=' + str(r))
 	
-	# plot sample values
-	if veryVerbose:
-		plt.imshow(sample, aspect = 'auto')
-		plt.colorbar()
-		plt.show()
-
-	if verbose:
 		for i in range(len(perc)):
 			plt.plot(win_t, quantile[:, i], mark[i], label=perc[i])
 
@@ -301,8 +349,39 @@ def getResults(rate_win,
 		plt.legend()
 		plt.show()
 	
-	return (results)
+	if veryVerbose:
+		print("Elapsed time: " + str(time.clock() - start_time))
 
+	return results
+
+def _displayInfo(displayDict, wanted_threads, names):
+	print("------ DISPLAYING INFO ------")
+	positions = [(0, 0), (500, 0), (1000, 0), (0, 500), (500, 500), (1000, 500), (0, 1000), (500, 1000)]
+	while displayDict["done"] < wanted_threads:
+		for i, name in enumerate(names):
+			visualizeProgress(name, displayDict["i_"+name], displayDict["j_"+name], displayDict["avg_na_"+name], displayDict["avg_nb_"+name] , displayDict["total_time_"+name] , displayDict["avg_dt_"+name] , displayDict["processed_"+name] , displayDict["needed_"+name], positions[i])
+
+		cv.waitKey(1000)
+
+def visualizeProgress(window_name, i, j, avg_na, avg_nb, time_elapsed, avg_dt, processed, needed, pos):
+	img = np.zeros((415, 460))
+	cv.putText(img, "i:"+str(i), (25, 50), cv.FONT_HERSHEY_SIMPLEX, 1, 1)
+	cv.putText(img, "j:"+str(j), (135, 50), cv.FONT_HERSHEY_SIMPLEX, 1, 1)
+
+	cv.putText(img, "avg na   avg nb", (25, 105), cv.FONT_HERSHEY_SIMPLEX, 1, 1)
+	cv.putText(img, str(int(avg_na)), (40, 140), cv.FONT_HERSHEY_SIMPLEX, 1, 1)
+	cv.putText(img, str(int(avg_nb)), (195, 140), cv.FONT_HERSHEY_SIMPLEX, 1, 1)
+
+	cv.putText(img, "Total Time: %.3f min"%(time_elapsed/60), (25, 200), cv.FONT_HERSHEY_SIMPLEX, 1, 1)
+	cv.putText(img, "Average dt: %.6f sec"%(avg_dt), (25, 235), cv.FONT_HERSHEY_SIMPLEX, 1, 1)
+
+	cv.putText(img, "Progress:", (25, 300), cv.FONT_HERSHEY_SIMPLEX, 1, 1)
+	cv.rectangle(img, (25, 315), (400, 350), (255, 255, 255), 1)
+	cv.rectangle(img, (25, 315), (int(375 * processed / needed) + 25, 350), (255, 255, 255), -1)
+	cv.putText(img, "(" + str(processed) + "/" + str(needed) + ")", (25, 385), cv.FONT_HERSHEY_SIMPLEX, 1, 1)
+
+	cv.imshow(window_name, img)
+	cv.moveWindow(window_name, pos[0], pos[1])
 
 
 if __name__ == '__main__': 
@@ -332,6 +411,6 @@ if __name__ == '__main__':
 
 	print(brain_data.shape)
 	eventMatrix, pMatrix = test_ROI_timecourse(brain_data)
-	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "expmeta": metadata}
-	saveData = hdf5manager("P5_MatrixData_full.hdf5")
+	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix}
+	saveData = hdf5manager("P2_MatrixData_full.hdf5")
 	saveData.save(fileData)

@@ -61,5 +61,5 @@ master_dict = eventCharacterization(brain_data)
 e = master_dict["Event Frequency"]
 
 a = np.asarray([1,2,3,4,5])
-df = pd.DataFrame(data = a)
+pd.DataFrame(data = a)
 #pd.DataFrame(data = master_dict.items(), columns = master_dict.keys())
