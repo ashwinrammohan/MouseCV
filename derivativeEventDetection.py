@@ -125,7 +125,7 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 			for h in range(spike-1, i, -1):
 				mid_spikes.append(h)
 
-	return (start_spikes, mid_spikes, end_spikes, data)
+	return (start_spikes[::-1], mid_spikes[::-1], end_spikes, data)
 	
 def test_amplitude():
 	data = loadHDF5("mouse_vectors")
@@ -134,6 +134,10 @@ def test_amplitude():
 		plt.figure("Limb: " + limbKey)
 		xs = np.linspace(0,len(data[limbKey]["magnitude"]),len(data[limbKey]["magnitude"]))
 		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[limbKey]["magnitude"], -0.1, second_deriv_batch=8, high_pass = 0.75, peak_height=0.25)
+
+		print(len(start_spikes), len(end_spikes))
+		print(start_spikes[0], end_spikes[0])
+		print(start_spikes[-1], end_spikes[-1])
 
 		plt.plot(xs,vals)
 		print("new code", limbKey, start_spikes)
