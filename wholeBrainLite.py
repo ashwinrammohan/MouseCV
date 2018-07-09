@@ -101,7 +101,7 @@ def rollingAverage(pathlist, byframe=True):
 
 def rollingDFOF(pathlist, average, output, resize_factor=1, codec=None, speed=1, 
 	fps=10, cmap=cv2.COLORMAP_JET, rotate=True, roipath=None, tcpath=None,
-	byframe=True):
+	byframe=True, dfof_std=True):
 
 	'''
 	Calculates rolling dfof of a series of tiff files one by one to save memory.
@@ -199,6 +199,8 @@ def rollingDFOF(pathlist, average, output, resize_factor=1, codec=None, speed=1,
 		out.write(frame)
 
 	print('Saving dfof video to: ' + output)
+	dfof_std_img = np.zeros_like(average)
+	nframes = 0
 
 	# Open each file and sum all frames
 	for f, path in enumerate(pathlist):
@@ -228,6 +230,10 @@ def rollingDFOF(pathlist, average, output, resize_factor=1, codec=None, speed=1,
 					frame = np.array(page.asarray())
 					frame = np.divide(frame, average)
 					frame -= 1.0
+
+					if dfof_std:
+						dfof_std_img += np.square(frame)
+						nframes += 1
 
 					if logmean and (frame.ndim == 2): 
 						file_timecourse[i] = frame[np.where(roimask == 1)].mean()
@@ -318,45 +324,9 @@ def rollingDFOF(pathlist, average, output, resize_factor=1, codec=None, speed=1,
 				'cmax':fmax}
 		f_mean.save(data)
 
-def dfofStandardDev(dfofpath, avg_img):
-	'''
-	Calculates standard deviation of a series of tiff files summing by one to 
-	save memory.
-	Takes list of paths, returns average in a numpy array
-	'''
-	print('\nTaking Standard Deviation\n-----------------------')
-
-	# Ignores UserWarning tags not ordered by code from tiff files
-	warnings.simplefilter('ignore', UserWarning)
-
-	# Open file and sum all frames		
-	print('Loading tiff movie at', path)
-	with TiffFile(path) as tif:
-		t0 = timer()
-
-		if f == 0:
-			# Get sizing information on the first frame of tiff file
-			shape = tif.pages[0].shape[-2:]
-			nframes = 0
-			print('\tframe shape:', shape)
-			
-		else:
-			assert tif.pages[0].shape[-2:] == shape, "Frames shapes don't match"
-
-		for i, page in enumerate(tif.pages):
-			if i == 0:
-				sumimg = np.zeros(shape)
-
-			frame = np.array(page.asarray())
-			sumimg += np.square(frame - avg_img)
-			nframes += 1
-
-		i += 1 # account for 0th element in n frames
-		print('\standard deviation took', timer() - t0, 'seconds')
-
-	standard_dev = np.sqrt(suming / nframes)
-	return standard_dev
-
+	if dfof_std:
+		dfof_std_img = np.sqrt(dfof_std_img / nframes)
+		return dfof_std_img
 
 
 if __name__ == '__main__':
@@ -381,9 +351,13 @@ if __name__ == '__main__':
 		nargs = 1, required=False, type=int)
 	ap.add_argument('-e', '--experiment', type=str, nargs=1, required=False,
 		help='name of experiment to process (string equality)')
+	ap.add_argument('-si', '--sumimage', help='path to average image if already computed (use default path if none supplied)', 
+		nargs = '?', required=False, type=str, const="c")
 	ap.add_argument('-g', '--grayscale', help='create grayscale movie', action='store_true')
 	ap.add_argument('-v', '--deviation', help='compute standard deviation of dfof', action='store_true')
 	args = vars(ap.parse_args())
+
+	print("suminage:", args['sumimage'])
 
 	if args['speed'] is not None:
 		speed = args['speed'][0]
@@ -472,11 +446,16 @@ if __name__ == '__main__':
 			pathlist = experiments[expname]
 
 			# Calculate average image and write
-			avgimg = rollingAverage(pathlist)
-			if args['avg'] is True:
-				print('Writing average image to', avgpath)
-				avgimg = wb.rescaleMovie(avgimg).astype('uint8')
-				cv2.imwrite(avgpath, avgimg)
+			if args['sumimage'] is None:
+				avgimg = rollingAverage(pathlist)
+				if args['avg'] is True:
+					print('Writing average image to', avgpath)
+					avgimg = wb.rescaleMovie(avgimg).astype('uint8')
+					cv2.imwrite(avgpath, avgimg)
+			elif args['sumimage'] == "$c$":
+				avgimg = cv2.imread(avgpath)
+			else:
+				avgimg = cv2.imread(args['sumimage'])
 
 			# Use average image to calculate dfof and write NAME_dfof.avi
 			if args['grayscale'] is True:
@@ -484,14 +463,18 @@ if __name__ == '__main__':
 			else:
 				cmap = cv2.COLORMAP_JET
 
-			rollingDFOF(pathlist, avgimg, dfofpath, speed=speed, roipath=roipath,
-				resize_factor=1/downsample, rotate=args['rotate'], cmap=cmap, 
-				tcpath=tcpath)
-
+			
 			if args['deviation'] is True:
-				dev = dfofStandardDev(dfofpath, avgimg)
+				dev = rollingDFOF(pathlist, avgimg, dfofpath, speed=speed, roipath=roipath,
+				resize_factor=1/downsample, rotate=args['rotate'], cmap=cmap, 
+				tcpath=tcpath, dfof_std = True)
+
 				cv2.imshow("Standard Deviation", dev)
 				cv2.imwrite(os.path.join(directory, expname + '_std_dev.png'), dev)
+			else:
+				rollingDFOF(pathlist, avgimg, dfofpath, speed=speed, roipath=roipath,
+				resize_factor=1/downsample, rotate=args['rotate'], cmap=cmap, 
+				tcpath=tcpath, dfof_std = False)
 
 
 	elif args['movie'] is not None:
