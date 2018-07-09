@@ -148,7 +148,14 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 
 	#print(eventMatrix[:,:,7])
 	#print(pMatrix[:,:,7])
-	return eventMatrix, pMatrix
+
+	cutoff = 0.0001 #1% cutoff for p values
+
+	preMatrix = np.zeros_like(pMatrix, dtype=bool)
+	preMatrix[pMatrix < cutoff] = True
+	preMatrix[pMatrix > 1 - cutoff] = True
+
+	return eventMatrix, pMatrix, preMatrix
 
 	#plt.plot(xs,vals)
 	'''
@@ -411,7 +418,7 @@ if __name__ == '__main__':
 	# name = metadata['name']
 
 	print(brain_data.shape)
-	eventMatrix, pMatrix = test_ROI_timecourse(brain_data)
-	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix}
+	eventMatrix, pMatrix, preMatrix = test_ROI_timecourse(brain_data)
+	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "precursors":preMatrix}
 	saveData = hdf5manager("Outputs/" + "P2_MatrixData_full" + ".hdf5")
 	saveData.save(fileData)
