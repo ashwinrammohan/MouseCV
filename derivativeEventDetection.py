@@ -72,10 +72,11 @@ def loadHDF5(file_name):
 # `second_deriv_batch` is the size of the buffer of derivatives that are stored, both before and after the current data point being evaluated. 
 # It is essentially an average, so a larger batch size will make wider peaks easier to detect, and reduce noise, but possibly miss narrow peaks.
 # `deriv_start` is the minimum value of the first derivative that counts as the beginning of the event. This should rarely be changed
-# `peak_height` is the minimum height of a peak. It will be calculated automatically, but the user may override the automatic calculation if they want.
+# `peak_tolerance` is the minimum height of a peak. It will be calculated automatically, but the user may override the automatic calculation if they want.
 # `high_pass` is the value passed to the butterworth filter which cuts off high frequencies. The number itself must range from 0 to 1, but 
 # what the numbers actually means is unclear. Regardless, a lower value will cut off more frequencies.
-def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start = 0, peak_height = 0, high_pass = 0.5):
+def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start = 0, peak_tolerance = 0, high_pass = 0.5):
+	#data = data - np.amin(data)
 	data = butterworth(data, high = high_pass, low = None) # smooth/de-noise the data
 
 	df = data[1:] - data[:-1] # get derivates
@@ -98,9 +99,10 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 
 	end_spikes = list(np.intersect1d(df_peaks, dff_peaks) + 1)
 
-	if (peak_height == 0):
-		peak_height = np.std(data)/3 # if no peak_height is given, the standard deviation is used to guess a good min height
-
+	if (peak_tolerance == 0):
+		peak_tolerance = np.std(data)/3 # if no peak_tolerance is given, the standard deviation is used to guess a good min height
+	else:
+		peak_tolerance = np.std(data) * peak_tolerance
 	# find activity duration
 	i = 0
 	start_spikes = [] # will hold the beginning of each spike, using the `deriv_start` parameter
@@ -118,7 +120,7 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 				if (i < 1): # if you reach the start of the data, it also counts as the beginning of the activity
 					done = True
 
-		if data[spike] - data[i] < peak_height: # check whether the total height of the peak is enough
+		if data[spike] - data[i] < peak_tolerance: # check whether the total height of the peak is enough
 			del end_spikes[j]
 		else:
 			start_spikes.append(i)
@@ -133,7 +135,7 @@ def test_amplitude():
 	for limbKey in data.keys():
 		plt.figure("Limb: " + limbKey)
 		xs = np.linspace(0,len(data[limbKey]["magnitude"]),len(data[limbKey]["magnitude"]))
-		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[limbKey]["magnitude"], -0.1, second_deriv_batch=8, high_pass = 0.75, peak_height=0.25)
+		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[limbKey]["magnitude"], -0.1, second_deriv_batch=8, high_pass = 0.75, peak_tolerance=0.25)
 
 		print(len(start_spikes), len(end_spikes))
 		print(start_spikes[0], end_spikes[0])
@@ -149,3 +151,75 @@ def test_amplitude():
 			plt.axvline(x = i, color = 'red')
 
 	plt.show()
+
+def test_timecourse():
+	data = hdf5manager("P2_timecourses.hdf5").load()["brain"]
+
+	plt.figure("inverted? #:" + str(261))
+	start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[261], -0.3, peak_tolerance = 0.5)
+	plt.plot(data[261])
+
+	mina = np.amin(data[261])
+	maxa = np.amax(data[261])
+	mean = np.mean(data[261])
+	plt.axhline(y = mina, color='red')
+	plt.axhline(y = maxa, color='blue')
+	plt.axhline(y = mean, color='green')
+
+	for i in start_spikes:
+		plt.axvline(x = i, color = 'red')
+	for i in mid_spikes:
+		plt.axvline(x = i, color = (1,1,0,0.3))
+	for i in end_spikes:
+		plt.axvline(x = i, color = 'red')
+
+	plt.show()
+
+	plt.figure("inverted? #:" + str(174))
+	start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[174], -0.3, peak_tolerance = 0.5)
+	plt.plot(vals)
+
+	mina = np.amin(data[174])
+	maxa = np.amax(data[174])
+	mean = np.mean(data[174])
+	plt.axhline(y = mina, color='red')
+	plt.axhline(y = maxa, color='blue')
+	plt.axhline(y = mean, color='green')
+
+	for i in start_spikes:
+		plt.axvline(x = i, color = 'red')
+	for i in mid_spikes:
+		plt.axvline(x = i, color = (1,1,0,0.3))
+	for i in end_spikes:
+		plt.axvline(x = i, color = 'red')
+
+	plt.show()
+
+	return
+
+	for i, row in enumerate(data):
+		mina = np.amin(row)
+		maxa = np.amax(row)
+		mean = np.mean(row)
+
+		if mean > (mina + maxa)/2:
+			plt.figure("inverted? #:" + str(i))
+			start_spikes, mid_spikes, end_spikes, vals = detectSpikes(row, -0.3, peak_tolerance = 0.5)
+			plt.plot(vals)
+
+			plt.axhline(y = mina, color='red')
+			plt.axhline(y = maxa, color='blue')
+			plt.axhline(y = mean, color='green')
+
+			plt.show()
+
+		# for i in start_spikes:
+		# 	plt.axvline(x = i, color = 'red')
+		# for i in mid_spikes:
+		# 	plt.axvline(x = i, color = (1,1,0,0.3))
+		# for i in end_spikes:
+		# 	plt.axvline(x = i, color = 'red')
+
+test_timecourse()
+		
+

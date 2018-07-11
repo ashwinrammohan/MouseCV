@@ -10,63 +10,63 @@ import ctypes as c
 import cv2 as cv
 
 def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix, pMatrix, brain_data, fps, dispDict, name):
-		print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
-		avg_na = FixedQueue(20)
-		avg_nb = FixedQueue(20)
-		total_time = time.clock()
-		avg_dt = FixedQueue(20)
-		dt = time.clock()
-		processed = 0
-		needed = (rowsUpper - rowsLower) * numRows
-		dispDict["needed_"+name] = needed
-		disp_time = 0
+	print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
+	avg_na = FixedQueue(20)
+	avg_nb = FixedQueue(20)
+	total_time = time.clock()
+	avg_dt = FixedQueue(20)
+	dt = time.clock()
+	processed = 0
+	needed = (rowsUpper - rowsLower) * numRows
+	dispDict["needed_"+name] = needed
+	disp_time = 0
 
-		eventResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0]))
-		pResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0]))
+	eventResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0]))
+	pResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0]))
 
-		for i in range(rowsLower, rowsUpper):
-			for j in range(numRows):
-				
-				if time.clock() - disp_time >= 1:
-					dispDict["i_"+name] = i
-					dispDict["j_"+name] = j
-					dispDict["avg_na_"+name] = avg_na.sum/20
-					dispDict["avg_nb_"+name] = avg_nb.sum/20
-					dispDict["total_time_"+name] = time.clock() - total_time
-					dispDict["avg_dt_"+name] = avg_dt.sum/20
-					dispDict["processed_"+name] = processed
-					disp_time = time.clock()
+	for i in range(rowsLower, rowsUpper):
+		for j in range(numRows):
+			
+			if time.clock() - disp_time >= 1:
+				dispDict["i_"+name] = i
+				dispDict["j_"+name] = j
+				dispDict["avg_na_"+name] = avg_na.sum/20
+				dispDict["avg_nb_"+name] = avg_nb.sum/20
+				dispDict["total_time_"+name] = time.clock() - total_time
+				dispDict["avg_dt_"+name] = avg_dt.sum/20
+				dispDict["processed_"+name] = processed
+				disp_time = time.clock()
 
-				processed += 1
+			processed += 1
 
-				if (i != j):
-					bin_tcs1 = binarized_data[i]
-					bin_tcs2 = binarized_data[j]
-					event_data, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
-					eventResults[i-rowsLower, j] = event_data
-					pResults[i-rowsLower, j] = getResults(event_data, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
+			if (i != j):
+				bin_tcs1 = binarized_data[i]
+				bin_tcs2 = binarized_data[j]
+				event_data, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
+				eventResults[i-rowsLower, j] = event_data
+				pResults[i-rowsLower, j] = getResults(event_data, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
 
-					avg_dt.add_value(time.clock() - dt)
-					dt = time.clock()
-					avg_na.add_value(na)
-					avg_nb.add_value(nb)
-				else:
-					eventResults[i-rowsLower, j] = np.NaN
-					pResults[i-rowsLower, j] = np.NaN
+				avg_dt.add_value(time.clock() - dt)
+				dt = time.clock()
+				avg_na.add_value(na)
+				avg_nb.add_value(nb)
+			else:
+				eventResults[i-rowsLower, j] = np.NaN
+				pResults[i-rowsLower, j] = np.NaN
+
+	eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
+	pNp = np.frombuffer(pMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
+
+	eventNp[rowsLower:rowsUpper] = eventResults
+	pNp[rowsLower:rowsUpper] = pResults
+	dispDict["done"] += 1
+	dispDict["i_"+name] = i
+	dispDict["j_"+name] = j
+	dispDict["total_time_"+name] = time.clock() - total_time
+	dispDict["processed_"+name] = processed
 
 
-		eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
-		pNp = np.frombuffer(pMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
-
-		eventNp[rowsLower:rowsUpper] = eventResults
-		pNp[rowsLower:rowsUpper] = pResults
-		dispDict["done"] += 1
-		dispDict["i_"+name] = i
-		dispDict["j_"+name] = j
-		dispDict["total_time_"+name] = time.clock() - total_time
-		dispDict["processed_"+name] = processed
-
-def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, mid_event = True, end_event = True, threads = 0):
+def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, mid_event = True, end_event = True, threads = 0, stDev_threshold = 0.8):
 	binarized_data = np.zeros_like(brain_data).astype('uint8')
 	numRows = brain_data.shape[0]
 	start_spike_set = []
@@ -76,20 +76,19 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 
 	print("Finding events...")
 
-	for i in range(brain_data.shape[0]):
-		dataRow = brain_data[i]
+	for i, dataRow in enumerate(brain_data):
 		binarizedRow = np.zeros_like(dataRow)
 
 		start_time = time.clock()
-		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3)
+		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3, peak_tolerance = 0.5)
 		print("Spikes at", i, "found in", (time.clock() - start_time), "seconds")
-
-		if start_event:
-			binarizedRow[start_spikes] = 1
-		if mid_event:
-			binarizedRow[mid_spikes] = 1
-		if end_event:
-			binarizedRow[end_spikes] = 1
+		if (np.std(dataRow > stDev_threshold)):
+			if start_event:
+				binarizedRow[start_spikes] = 1
+			if mid_event:
+				binarizedRow[mid_spikes] = 1
+			if end_event:
+				binarizedRow[end_spikes] = 1
 
 		binarized_data[i,:] = binarizedRow
 
@@ -139,6 +138,7 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 		threads.append(p)
 
 	_displayInfo(displayDict, wanted_threads, names)
+	print("All threads done")
 
 	# for p in threads:
 	# 	p.join()
@@ -146,48 +146,22 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 	eventMatrix = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))[inv_index_map][:,inv_index_map]
 	pMatrix = np.frombuffer(pMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))[inv_index_map][:,inv_index_map]
 
+	#print(eventMatrix[:,:,9].shape)
+
+	#plt.imshow("10th time window", eventMatrix[:,:,9])
+	#plt.colorbar()
+	#plt.show()
+
 	#print(eventMatrix[:,:,7])
 	#print(pMatrix[:,:,7])
 
-	cutoff = 0.0001 #1% cutoff for p values
+	cutoff = 0.0000000001 #1% cutoff for p values
 
-	preMatrix = np.zeros_like(pMatrix, dtype=bool)
-	preMatrix[pMatrix < cutoff] = True
-	preMatrix[pMatrix > 1 - cutoff] = True
+	#preMatrix = np.zeros_like(pMatrix, dtype=bool)
+	#preMatrix[pMatrix < cutoff] = True
+	#preMatrix[pMatrix > 1 - cutoff] = True
 
 	return eventMatrix, pMatrix, preMatrix
-
-	#plt.plot(xs,vals)
-	'''
-	for i in start_spikes:
-		plt.axvline(x = xs[i], color = 'red')
-	for i in mid_spikes:
-		plt.axvline(x = xs[i], color = (1,1,0,0.3))
-	for i in end_spikes:
-		plt.axvline(x = xs[i], color = 'red')
-		'''		
-	#plt.show()
-	'''	
-	diff = np.vstack((binary0,binary1))
-	print("Reached vstack")
-	plt.imshow(diff, aspect = 'auto')
-	plt.show()
-
-	win_t = np.arange(0, 2, 1/10)
-	rand, na, nb = eventCoin(binary0,binary1, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
-
-	plt.plot(win_t, rand,  label='Random')
-	plt.title('Rates per time window')
-	plt.xlabel('Time window (sce)')
-	plt.ylabel('Precursor coincidence rate')
-	plt.legend()
-	plt.show()
-
-	rand_results = getResults(rand, win_t=win_t, na=na, nb=nb, verbose = True, veryVerbose = False)
-	#plt.show()
-	#plot_event_Coincidence_Rates(start_spike_set,data['brain'].shape[1])
-	#return start_spike_set
-	'''
 
 def eventCoin(a, b, #two binary signals to compare
 			  win_t, #vector of time (s) for window
@@ -210,7 +184,7 @@ def eventCoin(a, b, #two binary signals to compare
 	if nb == None:
 		nb = b_ind.shape[0]
 
-	if na == 0:
+	if na == 0 or nb == 0:
 		return np.repeat(np.NaN, len(win_t)), na, nb
 	
 	#convert window times to window frames
@@ -365,11 +339,16 @@ def getResults(rate_win,
 def _displayInfo(displayDict, wanted_threads, names):
 	print("------ DISPLAYING INFO ------")
 	positions = [(0, 0), (500, 0), (1000, 0), (0, 500), (500, 500), (1000, 500), (0, 1000), (500, 1000)]
+
+	movewindows = True
 	while displayDict["done"] < wanted_threads:
 		for i, name in enumerate(names):
 			visualizeProgress(name, displayDict["i_"+name], displayDict["j_"+name], displayDict["avg_na_"+name], displayDict["avg_nb_"+name] , displayDict["total_time_"+name] , displayDict["avg_dt_"+name] , displayDict["processed_"+name] , displayDict["needed_"+name], positions[i])
+			if movewindows:
+				cv.moveWindow(name, positions[i][0], positions[i][1])
 
 		cv.waitKey(1000)
+		movewindows = False
 
 def visualizeProgress(window_name, i, j, avg_na, avg_nb, time_elapsed, avg_dt, processed, needed, pos):
 	img = np.zeros((415, 460))
@@ -389,35 +368,58 @@ def visualizeProgress(window_name, i, j, avg_na, avg_nb, time_elapsed, avg_dt, p
 	cv.putText(img, "(" + str(processed) + "/" + str(needed) + ")", (25, 385), cv.FONT_HERSHEY_SIMPLEX, 1, 1)
 
 	cv.imshow(window_name, img)
-	cv.moveWindow(window_name, pos[0], pos[1])
 
 
 if __name__ == '__main__': 
 	import argparse
 
 	ap = argparse.ArgumentParser()
-	ap.add_argument('-i', '--input', type = str, 
-		nargs = 1, required = False, 
-		help = 'name of hdf5 input file with ICA-filtered timecourses')
-	# ap.add_argument('-e', '--experiment', 
-	#     nargs = 1, required = False, 
-	#     help = 'name of experiment (YYYYMMDD_EE) for loading associated files.\
-	#         Requires folder argument -f')
-	ap.add_argument('-f', '--folder', 
-		nargs = 1, required = False, 
-		help = 'name of folder to load hdf5 file and save output hdf5 file')
-	# ap.add_argument('-o', '--output', type = argparse.FileType('a+'),
-	# 	nargs = 1, required = False, 
-	# 	help = 'path to the output experiment file to be written.  '
-	# 	'Must be .hdf5 file.')
+	ap.add_argument('-f', '--filename', type = str, nargs = 1, required = True, help = 'name of hdf5 input file with ICA-filtered timecourses')
+	ap.add_argument('-i', '--i', type = int, nargs = 1, required = False, help = 'index of specific timecourse')
+	ap.add_argument('-j', '--j', type = int, nargs = 1, required = False, help = 'index of other specific timecourse')
+
 	args = vars(ap.parse_args())
 
-	data = hdf5manager(args['input'][0]).load()
+	data = hdf5manager(args['filename'][0]).load()
 	brain_data = data['brain']
 	# metadata = data['expmeta']
 	# name = metadata['name']
 
 	print(brain_data.shape)
+
+	if args['i'] is not None:
+		data_i = args['i']
+		data_j = args['j']
+
+		binarized_data = np.zeros_like(brain_data).astype('uint8')
+		numRows = brain_data.shape[0]
+		start_spike_set = []
+		mid_spike_set = []
+		end_spike_set = []
+		win_t = np.arange((1/fps),max_window,(1/fps))
+
+		print("Finding events...")
+
+		for i, dataRow in enumerate(brain_data):
+			binarizedRow = np.zeros_like(dataRow)
+
+			start_time = time.clock()
+			start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3, peak_tolerance = 0.5)
+			print("Spikes at", i, "found in", (time.clock() - start_time), "seconds")
+			if (np.std(dataRow > stDev_threshold)):
+				if start_event:
+					binarizedRow[start_spikes] = 1
+				if mid_event:
+					binarizedRow[mid_spikes] = 1
+				if end_event:
+					binarizedRow[end_spikes] = 1
+
+			binarized_data[i,:] = binarizedRow
+
+		event_data, na, nb = eventCoin(binarized_data[data_i], binarized_data[data_j], win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
+		plt.plot(event_data)
+		plt.show()
+
 	eventMatrix, pMatrix, preMatrix = test_ROI_timecourse(brain_data)
 	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "precursors":preMatrix}
 	saveData = hdf5manager("Outputs/" + "P2_MatrixData_full" + ".hdf5")
