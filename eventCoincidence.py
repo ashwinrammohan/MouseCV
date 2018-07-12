@@ -8,6 +8,7 @@ import time
 from multiprocessing import Process, Array, cpu_count, Manager
 import ctypes as c
 import cv2 as cv
+from eventCharacterization import *
 
 def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix, pMatrix, brain_data, fps, dispDict, name, graph = False):
 	print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
@@ -352,6 +353,7 @@ def _displayInfo(displayDict, wanted_threads, names):
 
 		cv.waitKey(1000)
 		movewindows = False
+	cv.destroyAllWindows()
 
 def visualizeProgress(window_name, i, j, avg_na, avg_nb, time_elapsed, avg_dt, processed, needed, pos):
 	img = np.zeros((415, 460))
@@ -380,17 +382,23 @@ if __name__ == '__main__':
 	ap.add_argument('-f', '--filename', type = str, nargs = 1, required = True, help = 'name of hdf5 input file with ICA-filtered timecourses')
 	ap.add_argument('-i', '--i', type = int, nargs = 1, required = False, help = 'index of specific timecourse')
 	ap.add_argument('-j', '--j', type = int, nargs = 1, required = False, help = 'index of other specific timecourse')
+	ap.add_argument('-g', '--graphs', action = "store_true", required = False, help = 'display graphs after completing')
 
 	args = vars(ap.parse_args())
 
 	data = hdf5manager(args['filename'][0]).load()
-	brain_data = data['brain']
-	# metadata = data['expmeta']
-	# name = metadata['name']
+
+	if "ROI_timecourses" in data.keys():
+		brain_data = data['ROI_timecourses']
+	elif "brain" in data.keys():
+		brain_data = data["brain"]
+	else:
+		print("No data found! Maybe the hdf5 is formatted incorrectly?")
+		import sys
+		sys.exit()
 
 	print(brain_data.shape)
-	plt.plot(brain_data[0])
-	plt.show()
+
 	if args['i'] is not None:
 		data_i = args['i'][0]
 		data_j = args['j'][0]
@@ -425,5 +433,16 @@ if __name__ == '__main__':
 	else:
 		eventMatrix, pMatrix, preMatrix = test_ROI_timecourse(brain_data)
 		fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "precursors":preMatrix}
-		saveData = hdf5manager("Outputs/" + "P2_MatrixData_full" + ".hdf5")
+		fileString = ""
+		if ("expmeta" in data.keys()):
+			fileString = data['expmeta']['name']
+		else:
+			fileString = args['filename'][0].split("_")[0]
+
+		fileString = "Outputs/" + fileString + "_MatrixData_full.hdf5"
+		saveData = hdf5manager(fileString)
 		saveData.save(fileData)
+		print("Saved event coincidence data to Outputs/" + fileString + "_MatrixData_full.hdf5")
+
+		if args["graphs"] is not None:
+			eventGraphing(fileString, dataFile = data)

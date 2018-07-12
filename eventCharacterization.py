@@ -5,7 +5,7 @@ from hdf5manager import *
 from scipy.stats import poisson
 from scipy.stats import mode
 from derivativeEventDetection import detectSpikes
-from eventCoincidence import test_ROI_timecourse
+#from eventCoincidence import test_ROI_timecourse
 import pandas as pd
 
 #Characterizes each timecourse in a matrix of brain data by number of events, event frequency, maximum event magnitude
@@ -72,162 +72,179 @@ def eventFrequencyMode(start_spikes, size):
 	relevantRates = eventRates[np.where(eventRates > 0.0)][0] #find nonzero event rates (the relevant ones)
 	mode_val = mode(np.asarray(relevantRates))[0][0] #find the most commonly occurring event frequency in this timecourse
 	return mode_val
+	
 
-data = hdf5manager("P2_timecourses.hdf5").load()
-brain_data = data['brain']
-domain_map = data['domainmap']
-frequency_map = np.zeros((domain_map.shape[1], domain_map.shape[2])).astype('float')
-number_map = np.zeros((domain_map.shape[1], domain_map.shape[2])).astype('float')
-maxMag_map = np.zeros((domain_map.shape[1], domain_map.shape[2])).astype('float')
-eventInterval_map = np.zeros((domain_map.shape[1], domain_map.shape[2])).astype('float')
-master_dict = eventCharacterization(brain_data)
-f = master_dict["Event Frequency"]
-n = master_dict["Number of Events"]
-mag = master_dict["Event Magnitude"]
-dur = master_dict["Duration"]
-maxMag = master_dict["Max Magnitude"]
-eventInterval = master_dict["Inter-event Interval"]
-length = brain_data.shape[0]
+def eventGraphing(coincidenceFileName, dataFileName = None, dataFile = None):
+	assert not (dataFileName is None and dataFile is None), "Source data was not given in any form"
 
-ars = np.empty((domain_map.shape[0]), dtype="uint32")
-for i in range(domain_map.shape[0]):
-	xy_data = domain_map[i]
+	if dataFile is None:	
+		data = hdf5manager(dataFileName).load()
+	else:
+		data = dataFile
 
-	ar = np.sum(xy_data)
-	#print("Domain " + str(i) + " area: " + str(ar))	
-	ars[i] = ar
+	brain_data = data['brain']
+	domain_map = data['domainmap']
+	frequency_map = np.zeros((domain_map.shape[1], domain_map.shape[2])).astype('float')
+	number_map = np.zeros((domain_map.shape[1], domain_map.shape[2])).astype('float')
+	maxMag_map = np.zeros((domain_map.shape[1], domain_map.shape[2])).astype('float')
+	eventInterval_map = np.zeros((domain_map.shape[1], domain_map.shape[2])).astype('float')
+	master_dict = eventCharacterization(brain_data)
+	f = master_dict["Event Frequency"]
+	n = master_dict["Number of Events"]
+	mag = master_dict["Event Magnitude"]
+	dur = master_dict["Duration"]
+	maxMag = master_dict["Max Magnitude"]
+	eventInterval = master_dict["Inter-event Interval"]
+	length = brain_data.shape[0]
 
-	local_freq = f[i]
-	local_num = n[i]
-	localMaxMag = maxMag[i]
-	localInterval = eventInterval[i]
-	for j in range(xy_data.shape[0]):
-		oneS = np.where(xy_data[j]==1)[0]
-		for k in range(oneS.shape[0]):
-			frequency_map[j,oneS[k]] = local_freq
-			number_map[j,oneS[k]] = local_num
-			maxMag_map[j, oneS[k]] = localMaxMag
-			eventInterval_map[j, oneS[k]] = localInterval
+	ars = np.empty((domain_map.shape[0]), dtype="uint32")
+	for i in range(domain_map.shape[0]):
+		xy_data = domain_map[i]
 
-#s = np.arange(0,ars.shape[0],1)
-# plt.plot(ars, 'r-')
-# plt.show()
+		ar = np.sum(xy_data)
+		#print("Domain " + str(i) + " area: " + str(ar))	
+		ars[i] = ar
 
-# plt.imshow(frequency_map, cmap = 'Reds'), plt.colorbar(), plt.title("Event Frequency Spatial Map"), plt.axis('off')
-# plt.show()
-# plt.imshow(number_map, cmap = 'Reds'), plt.colorbar(), plt.title("Number of Events Spatial Map"), plt.axis('off')
-# plt.show()
-# plt.imshow(maxMag_map, cmap = 'Reds'), plt.colorbar(), plt.title("Maximum Event Magnitude Spatial Map"), plt.axis('off')
-# plt.show()
-# plt.imshow(eventInterval_map, cmap = 'Reds'), plt.colorbar(), plt.title("Average Inter-Event Interval Magnitude Spatial Map"), plt.axis('off')
-# plt.show()
+		local_freq = f[i]
+		local_num = n[i]
+		localMaxMag = maxMag[i]
+		localInterval = eventInterval[i]
+		for j in range(xy_data.shape[0]):
+			oneS = np.where(xy_data[j]==1)[0]
+			for k in range(oneS.shape[0]):
+				frequency_map[j,oneS[k]] = local_freq
+				number_map[j,oneS[k]] = local_num
+				maxMag_map[j, oneS[k]] = localMaxMag
+				eventInterval_map[j, oneS[k]] = localInterval
 
+	fig, axs = plt.subplots(2,2, figsize = (10,12))
+	axs = axs.ravel()
 
-# plt.subplot(221),plt.imshow(mag, cmap='hot', interpolation = 'nearest'), plt.colorbar(), plt.title("Event Magnitude")
-# plt.subplot(222), plt.imshow(dur, cmap = 'hot', interpolation = 'nearest'), plt.colorbar(), plt.title("Event Duration")
-# plt.subplot(223), plt.bar(np.arange(1,length+1,1),f), plt.title("Event Frequency (Mode)"), plt.xlabel("Time Course Number"), plt.ylabel("Event Frequency"), plt.xticks(np.arange(0,length+2, 2)), plt.tight_layout()
-# plt.subplot(224), plt.bar(np.arange(1,length+1,1),n), plt.title("Number of Events"), plt.xlabel("Time Course Number"), plt.ylabel("Number of Events"), plt.xticks(np.arange(0,length+2, 2)), plt.tight_layout()
-# plt.suptitle("P5 Time Course Event Characterization")
-# plt.show()
+	graph = axs[0].imshow(frequency_map, cmap = 'Reds')
+	axs[0].set_title("Event Frequency")
+	axs[0].axis('off')
+	fig.colorbar(graph, ax = axs[0])
 
-
-# plt.figure(figsize = (50,6))
-# freq = pd.DataFrame(mag.T)
-# freq.boxplot()
-# plt.savefig("Event Stuff.png")
+	graph = axs[1].imshow(number_map, cmap = 'Reds')
+	axs[1].set_title("Number of Events")
+	axs[1].axis('off')
+	fig.colorbar(graph, ax = axs[1])
 
 
-f = hdf5manager("Outputs/P2_MatrixData_full.hdf5")
-data = f.load()
-eventMatrix, pMatrix, preMatrix = data['eventMatrix'], data['pMatrix'], data['precursors']
-print(preMatrix.shape)
+	graph = axs[2].imshow(maxMag_map, cmap = 'Reds')
+	axs[2].set_title("Maximum Magnitude")
+	axs[2].axis('off')
+	fig.colorbar(graph, ax = axs[2])
 
-plt.subplot(121),plt.imshow(preMatrix[:,:,5])
-numPrecursors = {}
-plot_count = 0
-preMatrixAdd = np.empty_like(preMatrix)
-
-lt_mask = np.tri(preMatrix.shape[0], preMatrix.shape[0])[:,::-1]
-lt_mask = np.broadcast_to(lt_mask[...,None], (preMatrix.shape[0], preMatrix.shape[0], preMatrix.shape[2]))
-
-lt = lt_mask * preMatrix
-preMatrixAdd = preMatrix + lt[::-1,::-1]
-
-plt.subplot(122),plt.imshow(preMatrixAdd[:,:,5]), plt.colorbar(), plt.show()
-fig, axs  = plt.subplots(3,2, figsize = (10,12))
-axs = axs.ravel()
-
-fig2, axs2  = plt.subplots(3,2, figsize = (10,12))
-axs2 = axs2.ravel()
-
-for i in range(preMatrix.shape[0]):
-	done = False
-	count = 0
-	timeWindows = []
-	for j in range(preMatrix[i].shape[0]):
-		pre = preMatrix[i][j]
-		trueIndices = [ind for ind, x in enumerate(pre) if x]
-		if (len(trueIndices) > 0):
-			count +=1
-			timeWindows = [(x+1)*0.1 for i,x in enumerate(trueIndices)]
-		random_j = np.random.randint(0,preMatrix[i].shape[0])
-		labels = [i, random_j]
-		if ((i != random_j) and (i % 50 == 0) and not done):
-			done = True
-			#print(plot_count)
-			axs[plot_count].plot(pMatrix[i][random_j],'r-'),axs[plot_count].plot(eventMatrix[i][random_j]), axs[plot_count].set_title("Time Course " + str(i) + " coinciding with time course " + str(random_j))
-			axs2[plot_count].plot(brain_data[i]), axs2[plot_count].plot(brain_data[random_j]),axs2[plot_count].set_title("Time Course " + str(i) + " coinciding with time course " + str(random_j)), axs2[plot_count].legend(labels)
-			plot_count += 1
-	if (len(timeWindows) > 0):
-		print(str(i) + "\t" + str(count)+ "\t" + str(mode(np.asarray(timeWindows))[0][0]))
-plt.show()
-
-	#numPrecursors[count] = mode(np.asarray(timeWindows))[0][0]
-print(numPrecursors)
-#print([i for i,x in enumerate(np.asarray(numPrecursors)) if x>500])
-
-# numRows = brain_data[:5].shape[0]
-# for i in range(numRows):
-# 	dataRow = brain_data[i]
-# 	xs = np.linspace(0,dataRow.shape[0], dataRow.shape[0])
-# 	start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3)
-# 	plt.plot(xs,vals)
-# 	for i in start_spikes:
-# 		plt.axvline(x = i, color = 'red')
-# 	for i in mid_spikes:
-# 		plt.axvline(x = i, color = (1,1,0,0.3))
-# 	for i in end_spikes:
-# 		plt.axvline(x = i, color = 'red')
-
-# 	plt.show()
+	graph = axs[3].imshow(eventInterval_map, cmap = 'Reds')
+	axs[3].set_title("Average Inter-Event Interval Magnitude")
+	axs[3].axis('off')
+	fig.colorbar(graph, ax = axs[3])
+	
+	plt.show()
 
 
-# numRows = brain_data.shape[0]
-# plt.imshow(brain_data, aspect = 'auto'), plt.colorbar()
-# for i in range(numRows):
-# 		dataRow = brain_data[i]
-# 		binarizedRow = np.zeros_like(dataRow)
-# 		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, second_deriv_thresh = -0.3, peak_tolerance = 1)
-# 		# binarizedRow[start_spikes] = 1
-# 		# binarizedRow[mid_spikes] = 1
-# 		if (np.std(dataRow) > 0.8):
-# 			binarizedRow[end_spikes] = 1
-# 		print(np.sum(binarizedRow))
-# 		plt.plot(np.where(binarizedRow==1)[0], np.repeat(i, np.sum(binarizedRow)),'.k')
-# #plt.savefig("Binarized_Overlay.svg")
-# plt.plot(np.std(brain_data, axis = 1))
-# plt.show()
-# for i in range(numRows):
-# 	dataRow = brain_data[i]
-# 	xs = np.linspace(0,dataRow.shape[0], dataRow.shape[0])
-# 	start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3)
-# 	plt.plot(xs,vals)
-# 	for i in start_spikes:
-# 		plt.axvline(x = i, color = 'red')
-# 	for i in mid_spikes:
-# 		plt.axvline(x = i, color = (1,1,0,0.3))
-# 	for i in end_spikes:
-# 		plt.axvline(x = i, color = 'red')
+	# plt.subplot(221),plt.imshow(mag, cmap='hot', interpolation = 'nearest'), plt.colorbar(), plt.title("Event Magnitude")
+	# plt.subplot(222), plt.imshow(dur, cmap = 'hot', interpolation = 'nearest'), plt.colorbar(), plt.title("Event Duration")
+	# plt.subplot(223), plt.bar(np.arange(1,length+1,1),f), plt.title("Event Frequency (Mode)"), plt.xlabel("Time Course Number"), plt.ylabel("Event Frequency"), plt.xticks(np.arange(0,length+2, 2)), plt.tight_layout()
+	# plt.subplot(224), plt.bar(np.arange(1,length+1,1),n), plt.title("Number of Events"), plt.xlabel("Time Course Number"), plt.ylabel("Number of Events"), plt.xticks(np.arange(0,length+2, 2)), plt.tight_layout()
+	# plt.suptitle("P5 Time Course Event Characterization")
+	# plt.show()
 
-# 	plt.show()
+	f = hdf5manager(coincidenceFileName)
+	data = f.load()
+	eventMatrix, pMatrix, preMatrix = data['eventMatrix'], data['pMatrix'], data['precursors']
+	print(preMatrix.shape)
 
+	plt.subplot(121),plt.imshow(preMatrix[:,:,5].astype("uint8")), plt.colorbar()
+	numPrecursors = {}
+	plot_count = 0
+	preMatrixAdd = np.empty_like(preMatrix)
+
+	lt_mask = np.tri(preMatrix.shape[0], preMatrix.shape[0])[:,::-1]
+	lt_mask = np.broadcast_to(lt_mask[...,None], (preMatrix.shape[0], preMatrix.shape[0], preMatrix.shape[2]))
+
+	lt = lt_mask * preMatrix
+	preMatrixAdd = preMatrix + lt[::-1,::-1]
+
+	plt.subplot(122),plt.imshow(preMatrixAdd[:,:,5]), plt.colorbar(), plt.show()
+	fig2, axs2  = plt.subplots(3,2, figsize = (10,12))
+	axs2 = axs2.ravel()
+
+	fig3, axs3  = plt.subplots(3,2, figsize = (10,12))
+	axs3 = axs3.ravel()
+
+	for i in range(preMatrix.shape[0]):
+		done = False
+		count = 0
+		timeWindows = []
+		for j in range(preMatrix[i].shape[0]):
+			pre = preMatrix[i][j]
+			trueIndices = [ind for ind, x in enumerate(pre) if x]
+			if (len(trueIndices) > 0):
+				count +=1
+				timeWindows = [(x+1)*0.1 for i,x in enumerate(trueIndices)]
+
+			random_j = np.random.randint(0,preMatrix[i].shape[0])
+			labels = [i, random_j]
+
+			if ((i != random_j) and (i % 50 == 0) and not done):
+				done = True
+				axs2[plot_count].plot(eventMatrix[i][random_j])
+				axs2[plot_count].set_xlabel("Time Window (seconds)")
+				axs2[plot_count].set_ylabel("Event Coincidence Rate")
+				axs2[plot_count].set_title("Time Course " + str(i) + " coinciding with time course " + str(random_j))
+
+				fig2.tight_layout()
+
+				axs3[plot_count].plot(brain_data[i])
+				axs3[plot_count].plot(brain_data[random_j])
+				axs3[plot_count].set_xlabel("Frame Number")
+				axs3[plot_count].set_ylabel("Signal Intensity")
+				axs3[plot_count].set_title("Time Course " + str(i) + " coinciding with time course " + str(random_j))
+				axs3[plot_count].legend(labels)
+
+				fig3.tight_layout()
+
+				plot_count += 1
+
+		if (len(timeWindows) > 0):
+			print(str(i) + "\t" + str(count)+ "\t" + str(mode(np.asarray(timeWindows))[0][0]))
+	
+	print("graphs created")
+	plt.show()
+
+		#numPrecursors[count] = mode(np.asarray(timeWindows))[0][0]
+	print(numPrecursors)
+		#print([i for i,x in enumerate(np.asarray(numPrecursors)) if x>500])
+
+def miscellaneousGraphs():
+	numRows = brain_data.shape[0]
+	plt.imshow(brain_data, aspect = 'auto'), plt.colorbar()
+	for i in range(numRows):
+			dataRow = brain_data[i]
+			binarizedRow = np.zeros_like(dataRow)
+			start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, second_deriv_thresh = -0.3, peak_tolerance = 1)
+			# binarizedRow[start_spikes] = 1
+			# binarizedRow[mid_spikes] = 1
+			if (np.std(dataRow) > 0.8):
+				binarizedRow[end_spikes] = 1
+			print(np.sum(binarizedRow))
+			plt.plot(np.where(binarizedRow==1)[0], np.repeat(i, np.sum(binarizedRow)),'.k')
+	#plt.savefig("Binarized_Overlay.svg")
+	plt.plot(np.std(brain_data, axis = 1))
+	plt.show()
+	for i in range(numRows):
+		dataRow = brain_data[i]
+		xs = np.linspace(0,dataRow.shape[0], dataRow.shape[0])
+		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3)
+		plt.plot(xs,vals)
+		for i in start_spikes:
+			plt.axvline(x = i, color = 'red')
+		for i in mid_spikes:
+			plt.axvline(x = i, color = (1,1,0,0.3))
+		for i in end_spikes:
+			plt.axvline(x = i, color = 'red')
+
+		plt.show()
+eventGraphing("Outputs/171018_03_MatrixData_full.hdf5", dataFileName = "P2_timecourses.hdf5")

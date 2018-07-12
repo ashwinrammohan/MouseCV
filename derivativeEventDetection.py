@@ -153,49 +153,31 @@ def test_amplitude():
 	plt.show()
 
 def test_timecourse():
-	data = hdf5manager("P2_timecourses.hdf5").load()["brain"]
+	data = hdf5manager("P7_timecourses_domainROI.hdf5").load()["ROI_timecourses"]
 
-	plt.figure("inverted? #:" + str(261))
-	start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[261], -0.3, peak_tolerance = 0.5)
-	plt.plot(data[261])
+	specific_is = [0,5,10]
 
-	mina = np.amin(data[261])
-	maxa = np.amax(data[261])
-	mean = np.mean(data[261])
-	plt.axhline(y = mina, color='red')
-	plt.axhline(y = maxa, color='blue')
-	plt.axhline(y = mean, color='green')
+	for i in specific_is:
 
-	for i in start_spikes:
-		plt.axvline(x = i, color = 'red')
-	for i in mid_spikes:
-		plt.axvline(x = i, color = (1,1,0,0.3))
-	for i in end_spikes:
-		plt.axvline(x = i, color = 'red')
+		plt.figure("timecourse #" + str(i))
+		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[i], -0.3, peak_tolerance = 0.5)
+		plt.plot(data[i])
 
-	plt.show()
+		mina = np.amin(data[i])
+		maxa = np.amax(data[i])
+		mean = np.mean(data[i])
+		plt.axhline(y = mina, color='red')
+		plt.axhline(y = maxa, color='blue')
+		plt.axhline(y = mean, color='green')
 
-	plt.figure("inverted? #:" + str(174))
-	start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[174], -0.3, peak_tolerance = 0.5)
-	plt.plot(vals)
+		for i in start_spikes:
+			plt.axvline(x = i, color = 'red')
+		for i in mid_spikes:
+			plt.axvline(x = i, color = (1,1,0,0.3))
+		for i in end_spikes:
+			plt.axvline(x = i, color = 'red')
 
-	mina = np.amin(data[174])
-	maxa = np.amax(data[174])
-	mean = np.mean(data[174])
-	plt.axhline(y = mina, color='red')
-	plt.axhline(y = maxa, color='blue')
-	plt.axhline(y = mean, color='green')
-
-	for i in start_spikes:
-		plt.axvline(x = i, color = 'red')
-	for i in mid_spikes:
-		plt.axvline(x = i, color = (1,1,0,0.3))
-	for i in end_spikes:
-		plt.axvline(x = i, color = 'red')
-
-	plt.show()
-
-	return
+		plt.show()
 
 	for i, row in enumerate(data):
 		mina = np.amin(row)
@@ -221,5 +203,5 @@ def test_timecourse():
 		# 	plt.axvline(x = i, color = 'red')
 
 
-		
+#test_timecourse()
 
