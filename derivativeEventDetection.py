@@ -220,6 +220,6 @@ def test_timecourse():
 		# for i in end_spikes:
 		# 	plt.axvline(x = i, color = 'red')
 
-test_timecourse()
+
 		
 

@@ -137,14 +137,28 @@ for i in range(domain_map.shape[0]):
 # plt.savefig("Event Stuff.png")
 
 
-eventMatrix, pMatrix, preMatrix = test_ROI_timecourse(brain_data, start_event = True, mid_event = True, end_event = True)
-print("Threads done")
+f = hdf5manager("Outputs/P2_MatrixData_full.hdf5")
+data = f.load()
+eventMatrix, pMatrix, preMatrix = data['eventMatrix'], data['pMatrix'], data['precursors']
+print(preMatrix.shape)
 
+plt.subplot(121),plt.imshow(preMatrix[:,:,5])
 numPrecursors = {}
 plot_count = 0
+preMatrixAdd = np.empty_like(preMatrix)
 
+lt_mask = np.tri(preMatrix.shape[0], preMatrix.shape[0])[:,::-1]
+lt_mask = np.broadcast_to(lt_mask[...,None], (preMatrix.shape[0], preMatrix.shape[0], preMatrix.shape[2]))
+
+lt = lt_mask * preMatrix
+preMatrixAdd = preMatrix + lt[::-1,::-1]
+
+plt.subplot(122),plt.imshow(preMatrixAdd[:,:,5]), plt.colorbar(), plt.show()
 fig, axs  = plt.subplots(3,2, figsize = (10,12))
 axs = axs.ravel()
+
+fig2, axs2  = plt.subplots(3,2, figsize = (10,12))
+axs2 = axs2.ravel()
 
 for i in range(preMatrix.shape[0]):
 	done = False
@@ -157,12 +171,15 @@ for i in range(preMatrix.shape[0]):
 			count +=1
 			timeWindows = [(x+1)*0.1 for i,x in enumerate(trueIndices)]
 		random_j = np.random.randint(0,preMatrix[i].shape[0])
+		labels = [i, random_j]
 		if ((i != random_j) and (i % 50 == 0) and not done):
 			done = True
-			print(plot_count)
-			axs[plot_count].plot(eventMatrix[i][random_j]), axs[plot_count].set_title("Time Course " + str(i) + " coinciding with time course " + str(random_j))
+			#print(plot_count)
+			axs[plot_count].plot(pMatrix[i][random_j],'r-'),axs[plot_count].plot(eventMatrix[i][random_j]), axs[plot_count].set_title("Time Course " + str(i) + " coinciding with time course " + str(random_j))
+			axs2[plot_count].plot(brain_data[i]), axs2[plot_count].plot(brain_data[random_j]),axs2[plot_count].set_title("Time Course " + str(i) + " coinciding with time course " + str(random_j)), axs2[plot_count].legend(labels)
 			plot_count += 1
-	print(str(count)+ "\t" + str(mode(np.asarray(timeWindows))[0][0]))
+	if (len(timeWindows) > 0):
+		print(str(i) + "\t" + str(count)+ "\t" + str(mode(np.asarray(timeWindows))[0][0]))
 plt.show()
 
 	#numPrecursors[count] = mode(np.asarray(timeWindows))[0][0]

@@ -9,7 +9,7 @@ from multiprocessing import Process, Array, cpu_count, Manager
 import ctypes as c
 import cv2 as cv
 
-def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix, pMatrix, brain_data, fps, dispDict, name):
+def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix, pMatrix, brain_data, fps, dispDict, name, graph = False):
 	print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
 	avg_na = FixedQueue(20)
 	avg_nb = FixedQueue(20)
@@ -43,6 +43,10 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 				bin_tcs1 = binarized_data[i]
 				bin_tcs2 = binarized_data[j]
 				event_data, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
+
+				if graph:
+					plt.plot(bin_tcs1, 'bo'), plt.title("Index: " + str(i)), plt.show()
+
 				eventResults[i-rowsLower, j] = event_data
 				pResults[i-rowsLower, j] = getResults(event_data, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
 
@@ -66,7 +70,7 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 	dispDict["processed_"+name] = processed
 
 
-def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, mid_event = True, end_event = True, threads = 0, stDev_threshold = 0.8):
+def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, mid_event = False, end_event = True, threads = 0, stDev_threshold = 0.8):
 	binarized_data = np.zeros_like(brain_data).astype('uint8')
 	numRows = brain_data.shape[0]
 	start_spike_set = []
@@ -82,13 +86,12 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 		start_time = time.clock()
 		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3, peak_tolerance = 0.5)
 		print("Spikes at", i, "found in", (time.clock() - start_time), "seconds")
-		if (np.std(dataRow > stDev_threshold)):
-			if start_event:
-				binarizedRow[start_spikes] = 1
-			if mid_event:
-				binarizedRow[mid_spikes] = 1
-			if end_event:
-				binarizedRow[end_spikes] = 1
+		if start_event:
+			binarizedRow[start_spikes] = 1
+		if mid_event:
+			binarizedRow[mid_spikes] = 1
+		if end_event:
+			binarizedRow[end_spikes] = 1
 
 		binarized_data[i,:] = binarizedRow
 
@@ -96,6 +99,7 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 		wanted_threads = cpu_count()
 	else:
 		wanted_threads = threads
+
 
 	threads = []
 	print("Creating " + str(wanted_threads) + " threads...")
@@ -129,11 +133,11 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 		displayDict["needed_"+name] = 1
 
 		if i == wanted_threads-1:
-			p = Process(target=_eventCoin, args=(upper, numRows, numRows, binarized_data[index_map][:,index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name))
+			p = Process(target=_eventCoin, args=(upper, numRows, numRows, binarized_data[index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name))
 		else:
 			lower = i*dataPer
 			upper = (i+1)*dataPer
-			p = Process(target=_eventCoin, args=(lower, upper, numRows, binarized_data[index_map][:,index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name))
+			p = Process(target=_eventCoin, args=(lower, upper, numRows, binarized_data[index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name))
 		p.start()
 		threads.append(p)
 
@@ -155,11 +159,10 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 	#print(eventMatrix[:,:,7])
 	#print(pMatrix[:,:,7])
 
-	cutoff = 0.0000000001 #1% cutoff for p values
-
-	#preMatrix = np.zeros_like(pMatrix, dtype=bool)
-	#preMatrix[pMatrix < cutoff] = True
-	#preMatrix[pMatrix > 1 - cutoff] = True
+	cutoff = 0.0000001 #1% cutoff for p values
+	preMatrix = np.zeros_like(pMatrix, dtype=bool)
+	preMatrix[pMatrix < cutoff] = True
+	preMatrix[pMatrix > 1 - cutoff] = True
 
 	return eventMatrix, pMatrix, preMatrix
 
@@ -386,17 +389,15 @@ if __name__ == '__main__':
 	# name = metadata['name']
 
 	print(brain_data.shape)
-
+	plt.plot(brain_data[0])
+	plt.show()
 	if args['i'] is not None:
-		data_i = args['i']
-		data_j = args['j']
+		data_i = args['i'][0]
+		data_j = args['j'][0]
 
 		binarized_data = np.zeros_like(brain_data).astype('uint8')
 		numRows = brain_data.shape[0]
-		start_spike_set = []
-		mid_spike_set = []
-		end_spike_set = []
-		win_t = np.arange((1/fps),max_window,(1/fps))
+		win_t = np.arange((1/10),2,(1/10))
 
 		print("Finding events...")
 
@@ -406,21 +407,23 @@ if __name__ == '__main__':
 			start_time = time.clock()
 			start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3, peak_tolerance = 0.5)
 			print("Spikes at", i, "found in", (time.clock() - start_time), "seconds")
-			if (np.std(dataRow > stDev_threshold)):
-				if start_event:
-					binarizedRow[start_spikes] = 1
-				if mid_event:
-					binarizedRow[mid_spikes] = 1
-				if end_event:
-					binarizedRow[end_spikes] = 1
+			if True:
+				binarizedRow[start_spikes] = 1
+			if False:
+				binarizedRow[mid_spikes] = 1
+			if True:
+				binarizedRow[end_spikes] = 1
 
 			binarized_data[i,:] = binarizedRow
-
+		plt.plot(binarized_data[data_i]), plt.title(data_i)
+		plt.show()
+		plt.plot(binarized_data[data_j]), plt.title(data_j)
+		plt.show()
 		event_data, na, nb = eventCoin(binarized_data[data_i], binarized_data[data_j], win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
 		plt.plot(event_data)
 		plt.show()
-
-	eventMatrix, pMatrix, preMatrix = test_ROI_timecourse(brain_data)
-	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "precursors":preMatrix}
-	saveData = hdf5manager("Outputs/" + "P2_MatrixData_full" + ".hdf5")
-	saveData.save(fileData)
+	else:
+		eventMatrix, pMatrix, preMatrix = test_ROI_timecourse(brain_data)
+		fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "precursors":preMatrix}
+		saveData = hdf5manager("Outputs/" + "P2_MatrixData_full" + ".hdf5")
+		saveData.save(fileData)
