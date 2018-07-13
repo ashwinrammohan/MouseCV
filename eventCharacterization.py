@@ -52,6 +52,47 @@ def eventCharacterization(brain_data):
 
 	return master_dict
 
+
+def bootstrapInfo(brain_data):
+	numRows = brain_data.shape[0]
+
+	all_start_spikes = []
+	all_end_spikes = []
+	total_start_events = 0
+	total_end_events = 0
+
+	for i in range(numRows):
+		print("Doing timecourse number " + str(i))
+		dataRow = brain_data[i]
+		start_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3)
+		
+		total_start_events += start_spikes.shape[0]
+		total_end_events += end_spikes.shape[0]
+		all_start_spikes.append(start_spikes)
+		all_end_spikes.append(end_spikes)
+
+	np_start_spikes = np.empty(total_start_events)
+	np_end_spikes = np.empty(total_end_events)
+
+	lower = 0
+	upper = 0
+
+	for spikes in all_start_spikes:
+		upper += spikes.shape[0] 
+		np_start_spikes[lower:upper] = spikes
+		lower = upper
+
+	for spikes in all_end_spikes:
+		upper += spikes.shape[0] 
+		np_end_spikes[lower:upper] = spikes
+		lower = upper
+
+	np_durations = np_end_spikes - np_start_spikes
+	np_intervals = np_start_spikes[1:] - np_end_spikes[:-1]
+	np_intervals = np_intervals[np_intervals >= 0]
+	
+	
+
 #finds the most commonly occurring event frequency for a given time course to characterize it
 #start_spikes - the starting indices of each of the events in the timecourse
 #size is the length of the timecourse in frames
@@ -247,4 +288,4 @@ def miscellaneousGraphs():
 			plt.axvline(x = i, color = 'red')
 
 		plt.show()
-eventGraphing("Outputs/171018_03_MatrixData_full.hdf5", dataFileName = "P2_timecourses.hdf5")
+#eventGraphing("Outputs/171018_03_MatrixData_full.hdf5", dataFileName = "P2_timecourses.hdf5")
