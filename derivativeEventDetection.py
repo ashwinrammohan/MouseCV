@@ -11,6 +11,7 @@ try:
 	sys.path.append(path_file.read())
 	path_file.close()
 except:
+	print("Can't import, path.txt doesn't exist")
 	pass
 
 from timecourseAnalysis import butterworth
@@ -88,16 +89,16 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 	binary_dff = binary_df[1:] - binary_df[:-1] # get binarized second derivates
 	df_peaks = np.where(binary_dff < 0)[0] + 1 # get indecies of possible peaks from first deriv test
 
-	df_batches = np.copy(df[second_deriv_batch-1:]) # get sum of derivates in batches of `second_deriv_batch`
-	for i in range(second_deriv_batch-1):
-		lower = i
-		upper = second_deriv_batch - i - 1
-		df_batches += df[lower : -upper]
+	# df_batches = np.copy(df[second_deriv_batch-1:]) # get sum of derivates in batches of `second_deriv_batch`
+	# for i in range(second_deriv_batch-1):
+	# 	lower = i
+	# 	upper = second_deriv_batch - i - 1
+	# 	df_batches += df[lower : -upper]
 
-	dff_batches = df_batches[second_deriv_batch:] - df_batches[:-second_deriv_batch] # get differences of batches
-	dff_peaks = np.where(dff_batches < second_deriv_thresh)[0] + second_deriv_batch # get indecies of possible peaks from second deriv test
+	# dff_batches = df_batches[second_deriv_batch:] - df_batches[:-second_deriv_batch] # get differences of batches
+	# dff_peaks = np.where(dff_batches < second_deriv_thresh)[0] + second_deriv_batch # get indecies of possible peaks from second deriv test
 
-	end_spikes = list(np.intersect1d(df_peaks, dff_peaks) + 1)
+	end_spikes = list(df_peaks + 1)#list(np.intersect1d(df_peaks, dff_peaks) + 1)
 
 	if (peak_tolerance == 0):
 		peak_tolerance = np.std(data)/3 # if no peak_tolerance is given, the standard deviation is used to guess a good min height
@@ -105,29 +106,54 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 		peak_tolerance = np.std(data) * peak_tolerance
 	# find activity duration
 	i = 0
+	to_delete = []
+	last_base = data[end_spikes[0]]
+	max_delta = np.std(data) * 0.75
+	j = 0
+
 	start_spikes = [] # will hold the beginning of each spike, using the `deriv_start` parameter
 	mid_spikes = [] # will hold all indicies within activities. This is mostly used for graphing
-	for j in range(len(end_spikes)-1, -1, -1): # iterate backwards so that spikes can be removed without issue
-		spike = end_spikes[j]
-		i = spike - 1
+
+	for spike_location in range(len(end_spikes)):
+		spike = end_spikes[spike_location]
+		i = spike
+
 		done = False
-		while not(done): # walk backwards on the data until the beginning of the activity is detected
-			deriv = df[i-1]
-			if (deriv <= deriv_start):
-				done = True
-			else:
+		add_to_prev = True
+		while not(done) or (add_to_prev and j < i): # walk backwards on the data until the beginning of the activity is detected
+			if not(done):
 				i -= 1
-				if (i < 1): # if you reach the start of the data, it also counts as the beginning of the activity
+				deriv = df[i-1]
+				
+				if (deriv <= deriv_start) or (i == 0): # if you reach the start of the data, it also counts as the beginning of the activity
 					done = True
 
-		if data[spike] - data[i] < peak_tolerance: # check whether the total height of the peak is enough
-			del end_spikes[j]
-		else:
-			start_spikes.append(i)
-			for h in range(spike-1, i, -1):
+			if add_to_prev:
+				j += 1
+				base = data[j]
+
+				if abs(last_base - base) <= max_delta:
+					add_to_prev = False
+
+		if add_to_prev and spike_location > 0:
+			to_delete.append(spike_location-1)
+			for h in range(end_spikes[spike_location-1], spike):
 				mid_spikes.append(h)
 
-	return (start_spikes[::-1], mid_spikes[::-1], end_spikes, data)
+		else:
+			last_base = data[i]
+			if data[spike] - data[i] < peak_tolerance: # check whether the total height of the peak is enough
+				to_delete.append(spike_location)
+			else:
+				start_spikes.append(i)
+				for h in range(i+1, spike):
+					mid_spikes.append(h)
+		
+		j = spike
+
+	for i in to_delete[::-1]:
+		del end_spikes[i]
+	return (start_spikes, mid_spikes, end_spikes, data)
 	
 def test_amplitude():
 	data = loadHDF5("mouse_vectors")
@@ -153,7 +179,7 @@ def test_amplitude():
 	plt.show()
 
 def test_timecourse():
-	data = hdf5manager("P7_timecourses_domainROI.hdf5").load()["ROI_timecourses"]
+	data = hdf5manager("P2_timecourses.hdf5").load()["brain"]
 
 	specific_is = [0,5,10]
 
@@ -161,7 +187,7 @@ def test_timecourse():
 
 		plt.figure("timecourse #" + str(i))
 		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[i], -0.3, peak_tolerance = 0.5)
-		plt.plot(data[i])
+		plt.plot(vals)
 
 		mina = np.amin(data[i])
 		maxa = np.amax(data[i])
@@ -173,12 +199,14 @@ def test_timecourse():
 		for i in start_spikes:
 			plt.axvline(x = i, color = 'red')
 		for i in mid_spikes:
-			plt.axvline(x = i, color = (1,1,0,0.3))
+			break
+			#plt.axvline(x = i, color = (1,1,0,0.3))
 		for i in end_spikes:
-			plt.axvline(x = i, color = 'red')
+			plt.axvline(x = i, color = 'green')
 
 		plt.show()
 
+	return
 	for i, row in enumerate(data):
 		mina = np.amin(row)
 		maxa = np.amax(row)
@@ -203,5 +231,5 @@ def test_timecourse():
 		# 	plt.axvline(x = i, color = 'red')
 
 
-#test_timecourse()
+test_timecourse()
 
