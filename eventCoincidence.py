@@ -71,30 +71,33 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 	dispDict["processed_"+name] = processed
 
 
-def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, mid_event = False, end_event = True, threads = 0, stDev_threshold = 0.8):
-	binarized_data = np.zeros_like(brain_data).astype('uint8')
+def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, end_event = True, threads = 0, stDev_threshold = 0.8):
 	numRows = brain_data.shape[0]
-	start_spike_set = []
-	mid_spike_set = []
-	end_spike_set = []
+	spikes = []
 	win_t = np.arange((1/fps),max_window,(1/fps))
+	max_events = 0
 
 	print("Finding events...")
 
 	for i, dataRow in enumerate(brain_data):
-		binarizedRow = np.zeros_like(dataRow)
-
 		start_time = time.clock()
-		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3, peak_tolerance = 0.5)
+		start_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3, peak_tolerance = 0.5)
 		print("Spikes at", i, "found in", (time.clock() - start_time), "seconds")
-		if start_event:
-			binarizedRow[start_spikes] = 1
-		if mid_event:
-			binarizedRow[mid_spikes] = 1
-		if end_event:
-			binarizedRow[end_spikes] = 1
 
-		binarized_data[i,:] = binarizedRow
+		spikes.append([])
+		if start_event:
+			spikes[-1].append(start_spikes)
+		if end_event:
+			spikes[-1].append(end_spikes)
+
+		num_events = start_spikes.shape[0] + end_spikes.shape[0]
+		if num_events > max_events:
+			max_events = num_events
+
+	np_spikes = np.empty((numRows, max_events))
+	np_spikes.fill(np.NaN)
+	for i, events in enumerate(spikes):
+		np_spikes[i][:events.shape[0]]
 
 	if threads == 0:
 		wanted_threads = cpu_count()
@@ -167,7 +170,7 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 
 	return eventMatrix, pMatrix, preMatrix
 
-def eventCoin(a, b, #two binary signals to compare
+def eventCoin(a_ind, b_ind, #indeces of events of two signals to compare
 			  win_t, #vector of time (s) for window
 			  na = None, nb = None, #number of total events in each comparitive vector
 			  ratetype = 'precursor', #precursor or trigger
@@ -178,10 +181,6 @@ def eventCoin(a, b, #two binary signals to compare
 	
 	overall_time = time.clock()
 	start_time = time.clock()
-	
-	#find all indices for each event
-	a_ind = np.where(a != 0)[0]
-	b_ind = np.where(b != 0)[0]
 
 	if na == None:
 		na = a_ind.shape[0]
@@ -413,12 +412,10 @@ if __name__ == '__main__':
 			binarizedRow = np.zeros_like(dataRow)
 
 			start_time = time.clock()
-			start_spikes, mid_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3, peak_tolerance = 0.5)
+			start_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3, peak_tolerance = 0.5)
 			print("Spikes at", i, "found in", (time.clock() - start_time), "seconds")
 			if True:
 				binarizedRow[start_spikes] = 1
-			if False:
-				binarizedRow[mid_spikes] = 1
 			if True:
 				binarizedRow[end_spikes] = 1
 
