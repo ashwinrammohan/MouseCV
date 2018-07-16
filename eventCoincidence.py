@@ -448,7 +448,7 @@ if __name__ == '__main__':
 		fileString = "Outputs/" + fileString + "_MatrixData_full.hdf5"
 		saveData = hdf5manager(fileString)
 		saveData.save(fileData)
-		print("Saved event coincidence data to Outputs/" + fileString + "_MatrixData_full.hdf5")
+		print("Saved event coincidence data to " + fileString)
 
 		if args["graphs"] is not None:
 			eventGraphing(fileString, dataFile = data)
