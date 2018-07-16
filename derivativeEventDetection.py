@@ -3,7 +3,7 @@ import matplotlib
 from matplotlib import pyplot as plt
 from hdf5manager import *
 from scipy.stats import poisson
-import cv2 as cv
+#import cv2 as cv
 import sys
 
 try:
