@@ -1,6 +1,6 @@
 import numpy as np
 from matplotlib import pyplot as plt
-from hdf5manager import *
+from hdf5manager import hdf5manager as h5
 from derivativeEventDetection import detectSpikes
 from eventCharacterization import eventCharacterization
 
@@ -33,6 +33,9 @@ def getSpikesData(brain_data):
 			new_all_spikes = np.empty(est_num_spikes)
 			new_all_spikes[:lower] = all_spikes
 			all_spikes = new_all_spikes
+			
+	all_spikes[lower:upper] = start_spikes
+	all_spikes[upper:upper2] = end_spikes
 
 def ratesAtPercentiles(na, nb, spike_list, percentiles, timecourse_length):
 	a_spikes = spike_list[np.random.randint(spike_list.shape[0], size = na * batches)].reshape(batches, na)

@@ -53,11 +53,10 @@ def loadHDF5(file_name):
 		if not(limbName in data.keys()): # check if this kv pair actually exists
 			return
 
-		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[limbName]["magnitude"], -0.3) # find events in magnitude data
+		start_spikes, end_spikes, vals = detectSpikes(data[limbName]["magnitude"], -0.3) # find events in magnitude data
 		data[limbName]["pos"] = pos # position of the vector for graphing purposes
 		data[limbName]["color"] = color # color of the vector when graphing
 		data[limbName]["start_spikes"] = start_spikes
-		data[limbName]["mid_spikes"] = mid_spikes
 		data[limbName]["end_spikes"] = end_spikes
 
 	loadLimb("footFL", (0,1), (1, 0, 0))
@@ -112,7 +111,6 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 	j = 0
 
 	start_spikes = [] # will hold the beginning of each spike, using the `deriv_start` parameter
-	mid_spikes = [] # will hold all indicies within activities. This is mostly used for graphing
 
 	for spike_location in range(len(end_spikes)):
 		spike = end_spikes[spike_location]
@@ -137,8 +135,6 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 
 		if add_to_prev and spike_location > 0:
 			to_delete.append(spike_location-1)
-			for h in range(end_spikes[spike_location-1], spike):
-				mid_spikes.append(h)
 
 		else:
 			last_base = data[i]
@@ -146,14 +142,13 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 				to_delete.append(spike_location)
 			else:
 				start_spikes.append(i)
-				for h in range(i+1, spike):
-					mid_spikes.append(h)
 		
 		j = spike
 
 	for i in to_delete[::-1]:
 		del end_spikes[i]
-	return (start_spikes, mid_spikes, end_spikes, data)
+		
+	return (np.asarray(start_spikes), np.asarray(end_spikes), data)
 	
 def test_amplitude():
 	data = loadHDF5("mouse_vectors")
@@ -161,7 +156,7 @@ def test_amplitude():
 	for limbKey in data.keys():
 		plt.figure("Limb: " + limbKey)
 		xs = np.linspace(0,len(data[limbKey]["magnitude"]),len(data[limbKey]["magnitude"]))
-		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[limbKey]["magnitude"], -0.1, second_deriv_batch=8, high_pass = 0.75, peak_tolerance=0.25)
+		start_spikes, end_spikes, vals = detectSpikes(data[limbKey]["magnitude"], -0.1, second_deriv_batch=8, high_pass = 0.75, peak_tolerance=0.25)
 
 		print(len(start_spikes), len(end_spikes))
 		print(start_spikes[0], end_spikes[0])
@@ -171,8 +166,6 @@ def test_amplitude():
 		print("new code", limbKey, start_spikes)
 		for i in start_spikes:
 			plt.axvline(x = i, color = 'red')
-		for i in mid_spikes:
-			plt.axvline(x = i, color = (1,1,0,0.3))
 		for i in end_spikes:
 			plt.axvline(x = i, color = 'red')
 
@@ -186,7 +179,7 @@ def test_timecourse():
 	for i in specific_is:
 
 		plt.figure("timecourse #" + str(i))
-		start_spikes, mid_spikes, end_spikes, vals = detectSpikes(data[i], -0.3, peak_tolerance = 0.5)
+		start_spikes, end_spikes, vals = detectSpikes(data[i], -0.3, peak_tolerance = 0.5)
 		plt.plot(vals)
 
 		mina = np.amin(data[i])
@@ -198,9 +191,6 @@ def test_timecourse():
 
 		for i in start_spikes:
 			plt.axvline(x = i, color = 'red')
-		for i in mid_spikes:
-			break
-			#plt.axvline(x = i, color = (1,1,0,0.3))
 		for i in end_spikes:
 			plt.axvline(x = i, color = 'green')
 
@@ -214,7 +204,7 @@ def test_timecourse():
 
 		if mean > (mina + maxa)/2:
 			plt.figure("inverted? #:" + str(i))
-			start_spikes, mid_spikes, end_spikes, vals = detectSpikes(row, -0.3, peak_tolerance = 0.5)
+			start_spikes, end_spikes, vals = detectSpikes(row, -0.3, peak_tolerance = 0.5)
 			plt.plot(vals)
 
 			plt.axhline(y = mina, color='red')
@@ -225,8 +215,6 @@ def test_timecourse():
 
 		# for i in start_spikes:
 		# 	plt.axvline(x = i, color = 'red')
-		# for i in mid_spikes:
-		# 	plt.axvline(x = i, color = (1,1,0,0.3))
 		# for i in end_spikes:
 		# 	plt.axvline(x = i, color = 'red')
 
