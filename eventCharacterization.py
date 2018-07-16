@@ -53,7 +53,7 @@ def eventCharacterization(brain_data):
 	return master_dict
 
 
-def bootstrapInfo(brain_data):
+def bootstrapInfo(brain_data, batches, na, nb):
 	numRows = brain_data.shape[0]
 
 	all_start_spikes = []
@@ -91,7 +91,25 @@ def bootstrapInfo(brain_data):
 	np_intervals = np_start_spikes[1:] - np_end_spikes[:-1]
 	np_intervals = np_intervals[np_intervals >= 0]
 	
-	
+	duration_rand_inds = np.random.random(np_durations.shape[0], size = na * batches)
+	interval_rand_inds = np.random.random(np_intervals.shape[0], size = na * batches)
+
+	joined_array = np.empty((batches, na * 2))
+	joined_array[:,::2] = np_durations[duration_rand_inds].reshape((batches, na))
+	joined_array[:,1::2] = np_intervals[interval_rand_inds].reshape((batches, na))
+
+	a_inds = np.cumsum(joined_array, axis = 1)[:,::2]
+
+	duration_rand_inds = np.random.random(np_durations.shape[0], size = nb * batches)
+	interval_rand_inds = np.random.random(np_intervals.shape[0], size = nb * batches)
+
+	joined_array = np.empty((batches, nb * 2))
+	joined_array[:,::2] = np_durations[duration_rand_inds].reshape((batches, nb))
+	joined_array[:,1::2] = np_intervals[interval_rand_inds].reshape((batches, nb))
+
+	b_inds = np.cumsum(joined_array, axis = 1)[:,::2]
+
+	return a_inds, b_inds
 
 #finds the most commonly occurring event frequency for a given time course to characterize it
 #start_spikes - the starting indices of each of the events in the timecourse
@@ -289,3 +307,40 @@ def miscellaneousGraphs():
 
 		plt.show()
 #eventGraphing("Outputs/171018_03_MatrixData_full.hdf5", dataFileName = "P2_timecourses.hdf5")
+
+if __name__ == '__main__': 
+	import argparse
+
+	ap = argparse.ArgumentParser()
+	ap.add_argument('-f', '--filename', type = str, nargs = 1, required = True, help = 'name of hdf5 input file with ICA-filtered timecourses')
+	ap.add_argument('-g', '--graphs', action = "store_true", required = False, help = 'display graphs after completing')
+
+	args = vars(ap.parse_args())
+
+	data = hdf5manager(args['filename'][0]).load()
+
+	if "ROI_timecourses" in data.keys():
+		brain_data = data['ROI_timecourses']
+	elif "brain" in data.keys():
+		brain_data = data["brain"]
+	else:
+		print("No data found! Maybe the hdf5 is formatted incorrectly?")
+		import sys
+		sys.exit()
+
+	# print(brain_data.shape)
+	bootstrapInfo
+	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "precursors":preMatrix}
+	fileString = ""
+	if ("expmeta" in data.keys()):
+		fileString = data['expmeta']['name']
+	else:
+		fileString = args['filename'][0].split("_")[0]
+
+	fileString = "Outputs/" + fileString + "_MatrixData_full.hdf5"
+	saveData = hdf5manager(fileString)
+	saveData.save(fileData)
+	print("Saved event coincidence data to Outputs/" + fileString + "_MatrixData_full.hdf5")
+
+	if args["graphs"] is not None:
+		eventGraphing(fileString, dataFile = data)
