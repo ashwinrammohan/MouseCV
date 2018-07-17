@@ -104,7 +104,7 @@ def bootstrapInfo(np_durations, np_intervals, batches, n):
 	a_inds = np.cumsum(joined_array, axis = 1)[:,::2]
 	return a_inds
 
-def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_intveral = 25, fps = 10,  max_window = 2, threads = 0, stDev_threshold = 0.8, batches = 10000):
+def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_interval = 25, fps = 10,  max_window = 2, threads = 0, stDev_threshold = 0.8, batches = 10000):
 	if threads == 0:
 		wanted_threads = cpu_count()
 	else:
@@ -117,7 +117,7 @@ def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_intveral = 25
 	print("Creating spikes data...")
 	t = time.clock()
 	perc = np.array([1, 2.5, 25, 50, 75, 97.5, 99])/100
-	np_sizes = np.arange(n_min, n_max, n_intveral)
+	np_sizes = np.arange(n_min, n_max, n_interval)
 	numRows = num_spikes.shape[0]
 	eventMatrix = Array(c.c_double, numRows*numRows*win_t.shape[0]*perc.shape[0])
 	spikes_a = np.empty((numRows, batches, n_max*2))
@@ -164,14 +164,19 @@ def _eventCoin(rowsLower, rowsUpper, numRows, spikes_a, spikes_b, num_spikes, wi
 	needed = (rowsUpper - rowsLower) * numRows
 
 	eventResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0], perc.shape[0]))
+	batches = spikes_a.shape[1]
+	coins = np.empty((batches, win_t.shape[0]))
 
 	for i in range(rowsLower, rowsUpper):
 		for j in range(numRows):
-			spike_tcs1 = spikes[i,:num_spikes[i]]
-			spike_tcs2 = spikes[j,:num_spikes[j]]
-			event_data, na, nb = eventCoin(spike_tcs1, spike_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
+			all_spike_tcs1 = spikes_a[i,:num_spikes[i]]
+			all_spike_tcs2 = spikes_b[j,:num_spikes[j]]
 
-			eventResults[i-rowsLower, j] = event_data
+			for k in range(batches):
+				event_data, na, nb = eventCoin(all_spike_tcs1[k], all_spike_tcs2[k], win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
+				coins[k] = event_data
+
+			eventResults[i-rowsLower, j] = #SOME SORT OF CALCULATION INVOLVING COINS
 
 	eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0], perc.shape[0]))
 	eventNp[rowsLower:rowsUpper] = eventResults
