@@ -439,6 +439,9 @@ if __name__ == '__main__':
 	else:
 		eventMatrix, pMatrix, preMatrix = test_ROI_timecourse(brain_data)
 		fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "precursors":preMatrix}
+
+		print(fileData)
+
 		fileString = ""
 		if ("expmeta" in data.keys()):
 			fileString = data['expmeta']['name']
@@ -451,4 +454,5 @@ if __name__ == '__main__':
 		print("Saved event coincidence data to " + fileString)
 
 		if args["graphs"] is not None:
-			eventGraphing(fileString, dataFile = data)
+			pass
+			#eventGraphing(fileString, dataFile = data)

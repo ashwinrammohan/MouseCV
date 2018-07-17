@@ -2,11 +2,11 @@ import numpy as np
 import matplotlib
 from matplotlib import pyplot as plt
 from hdf5manager import *
-from scipy.stats import poisson
 from scipy.stats import mode
 from derivativeEventDetection import detectSpikes
-#from eventCoincidence import test_ROI_timecourse
+from eventCoincidence import eventCoin
 import pandas as pd
+import time
 
 #Characterizes each timecourse in a matrix of brain data by number of events, event frequency, maximum event magnitude
 #and average inter-event interval (time between consecutive events). Each event in each timecourse is further characterized
@@ -53,7 +53,7 @@ def eventCharacterization(brain_data):
 	return master_dict
 
 
-def bootstrapInfo(brain_data, batches, na, nb):
+def bootstrapData(brain_data):
 	numRows = brain_data.shape[0]
 
 	all_start_spikes = []
@@ -90,7 +90,10 @@ def bootstrapInfo(brain_data, batches, na, nb):
 	np_durations = np_end_spikes - np_start_spikes
 	np_intervals = np_start_spikes[1:] - np_end_spikes[:-1]
 	np_intervals = np_intervals[np_intervals >= 0]
-	
+
+	return np_durations, np_intervals
+
+def bootstrapInfo(np_durations, np_intervals, batches, n):
 	duration_rand_inds = np.random.random(np_durations.shape[0], size = na * batches)
 	interval_rand_inds = np.random.random(np_intervals.shape[0], size = na * batches)
 
@@ -99,17 +102,79 @@ def bootstrapInfo(brain_data, batches, na, nb):
 	joined_array[:,1::2] = np_intervals[interval_rand_inds].reshape((batches, na))
 
 	a_inds = np.cumsum(joined_array, axis = 1)[:,::2]
+	return a_inds
 
-	duration_rand_inds = np.random.random(np_durations.shape[0], size = nb * batches)
-	interval_rand_inds = np.random.random(np_intervals.shape[0], size = nb * batches)
+def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_intveral = 25, fps = 10,  max_window = 2, threads = 0, stDev_threshold = 0.8, batches = 10000):
+	if threads == 0:
+		wanted_threads = cpu_count()
+	else:
+		wanted_threads = threads
 
-	joined_array = np.empty((batches, nb * 2))
-	joined_array[:,::2] = np_durations[duration_rand_inds].reshape((batches, nb))
-	joined_array[:,1::2] = np_intervals[interval_rand_inds].reshape((batches, nb))
+	win_t = np.arange((1/fps),max_window,(1/fps))
+	wanted_threads = cpu_count()
+	threads = []
 
-	b_inds = np.cumsum(joined_array, axis = 1)[:,::2]
+	print("Creating spikes data...")
+	t = time.clock()
+	perc = np.array([1, 2.5, 25, 50, 75, 97.5, 99])/100
+	np_sizes = np.arange(n_min, n_max, n_intveral)
+	numRows = num_spikes.shape[0]
+	eventMatrix = Array(c.c_double, numRows*numRows*win_t.shape[0]*perc.shape[0])
+	spikes_a = np.empty((numRows, batches, n_max*2))
+	spikes_b = np.empty((numRows, batches, n_max*2))
+	np_durations, np_intervals = bootstrapData(brain_data)
 
-	return a_inds, b_inds
+	for i in range(numRows):
+		a_ind = bootstrapInfo(np_durations, np_intervals, batches, np_sizes[i])
+		b_ind = bootstrapInfo(np_durations, np_intervals, batches, np_sizes[i])
+		spikes_a[i][:,:np_sizes[i]] = a_ind
+		spikes_b[i][:,:np_sizes[i]] = b_ind
+
+	if wanted_threads > numRows:
+		wanted_threads = numRows
+
+	index_map = []
+	for i in range(wanted_threads):
+		index_map.extend(list(np.arange(i,brain_data.shape[0],wanted_threads)))
+
+	index_map = np.asarray(index_map)
+	inv_index_map = np.argsort(index_map)
+	print("Created data arrays in", time.clock() - t, "seconds")
+
+	print("Creating " + str(wanted_threads) + " threads...")
+	dataPer = int(numRows / wanted_threads)
+	upper = 0
+	for i in range(wanted_threads):
+		if i == wanted_threads-1:
+			p = Process(target=_eventCoin, args=(upper, numRows, numRows, spikes_a, spikes_b, np_sizes, win_t, eventMatrix, timecourse_length, fps, perc))
+		else:
+			lower = i*dataPer
+			upper = (i+1)*dataPer
+			p = Process(target=_eventCoin, args=(lower, upper, numRows, spikes_a, spikes_b, np_sizes, win_t, eventMatrix, timecourse_length, fps, perc))
+		p.start()
+		threads.append(p)
+
+	print("All threads done")
+
+	eventMatrix = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0], perc.shape[0]))
+	return eventMatrix
+
+def _eventCoin(rowsLower, rowsUpper, numRows, spikes_a, spikes_b, num_spikes, win_t, eventMatrix, timecourse_length, fps, perc):
+	print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
+	needed = (rowsUpper - rowsLower) * numRows
+
+	eventResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0], perc.shape[0]))
+
+	for i in range(rowsLower, rowsUpper):
+		for j in range(numRows):
+			spike_tcs1 = spikes[i,:num_spikes[i]]
+			spike_tcs2 = spikes[j,:num_spikes[j]]
+			event_data, na, nb = eventCoin(spike_tcs1, spike_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
+
+			eventResults[i-rowsLower, j] = event_data
+
+	eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0], perc.shape[0]))
+	eventNp[rowsLower:rowsUpper] = eventResults
 
 #finds the most commonly occurring event frequency for a given time course to characterize it
 #start_spikes - the starting indices of each of the events in the timecourse
