@@ -8,7 +8,6 @@ import time
 from multiprocessing import Process, Array, cpu_count, Manager
 import ctypes as c
 import cv2 as cv
-from eventCharacterization import *
 
 def _eventCoin(rowsLower, rowsUpper, numRows, spikes, num_spikes, win_t, eventMatrix, pMatrix, brain_data, fps, dispDict, name, graph = False):
 	print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
@@ -385,6 +384,7 @@ def visualizeProgress(window_name, i, j, avg_na, avg_nb, time_elapsed, avg_dt, p
 
 if __name__ == '__main__': 
 	import argparse
+	from eventCharacterization import eventCharacterization, eventGraphing
 
 	ap = argparse.ArgumentParser()
 	ap.add_argument('-f', '--filename', type = str, nargs = 1, required = True, help = 'name of hdf5 input file with ICA-filtered timecourses')

@@ -3,8 +3,10 @@ import matplotlib
 from matplotlib import pyplot as plt
 from hdf5manager import *
 from scipy.stats import mode
-from derivativeEventDetection import detectSpikes
-from eventCoincidence import eventCoin
+from derivativeEventDetection import detectSpikes, FixedQueue
+from eventCoincidence import eventCoin, _displayInfo, visualizeProgress
+import ctypes as c
+from multiprocessing import Process, Array, cpu_count, Manager
 import pandas as pd
 import time
 
@@ -82,6 +84,9 @@ def bootstrapData(brain_data):
 		np_start_spikes[lower:upper] = spikes
 		lower = upper
 
+	lower = 0
+	upper = 0
+
 	for spikes in all_end_spikes:
 		upper += spikes.shape[0] 
 		np_end_spikes[lower:upper] = spikes
@@ -94,12 +99,12 @@ def bootstrapData(brain_data):
 	return np_durations, np_intervals
 
 def bootstrapInfo(np_durations, np_intervals, batches, n):
-	duration_rand_inds = np.random.random(np_durations.shape[0], size = na * batches)
-	interval_rand_inds = np.random.random(np_intervals.shape[0], size = na * batches)
+	duration_rand_inds = np.random.randint(np_durations.shape[0], size = n * batches)
+	interval_rand_inds = np.random.randint(np_intervals.shape[0], size = n * batches)
 
-	joined_array = np.empty((batches, na * 2))
-	joined_array[:,::2] = np_durations[duration_rand_inds].reshape((batches, na))
-	joined_array[:,1::2] = np_intervals[interval_rand_inds].reshape((batches, na))
+	joined_array = np.empty((batches, n * 2))
+	joined_array[:,::2] = np_durations[duration_rand_inds].reshape((batches, n))
+	joined_array[:,1::2] = np_intervals[interval_rand_inds].reshape((batches, n))
 
 	a_inds = np.cumsum(joined_array, axis = 1)[:,::2]
 	return a_inds
@@ -116,17 +121,20 @@ def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_interval = 25
 
 	print("Creating spikes data...")
 	t = time.clock()
-	perc = np.array([1, 2.5, 25, 50, 75, 97.5, 99])/100
+	perc = np.array([1, 2.5, 25, 50, 75, 97.5, 99])
 	np_sizes = np.arange(n_min, n_max, n_interval)
 	numRows = np_sizes.shape[0]
 	eventMatrix = Array(c.c_double, numRows*numRows*win_t.shape[0]*perc.shape[0])
-	spikes_a = np.empty((numRows, batches, n_max*2))
-	spikes_b = np.empty((numRows, batches, n_max*2))
+	spikes_a = np.empty((numRows, batches, n_max))
+	spikes_b = np.empty((numRows, batches, n_max))
 	np_durations, np_intervals = bootstrapData(brain_data)
+	displayDict = Manager().dict()
+	displayDict["done"] = 0
 
 	for i in range(numRows):
 		a_ind = bootstrapInfo(np_durations, np_intervals, batches, np_sizes[i])
 		b_ind = bootstrapInfo(np_durations, np_intervals, batches, np_sizes[i])
+
 		spikes_a[i][:,:np_sizes[i]] = a_ind
 		spikes_b[i][:,:np_sizes[i]] = b_ind
 
@@ -135,51 +143,97 @@ def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_interval = 25
 
 	index_map = []
 	for i in range(wanted_threads):
-		index_map.extend(list(np.arange(i,brain_data.shape[0],wanted_threads)))
+		index_map.extend(list(np.arange(i,numRows,wanted_threads)))
 
 	index_map = np.asarray(index_map)
+	print("index map:", index_map)
 	inv_index_map = np.argsort(index_map)
 	print("Created data arrays in", time.clock() - t, "seconds")
 
 	print("Creating " + str(wanted_threads) + " threads...")
 	dataPer = int(numRows / wanted_threads)
 	upper = 0
+	names = []
 	for i in range(wanted_threads):
+		name = "Thread " + str(i+1)
+		names.append(name)
+
+		displayDict["i_"+name] = 0
+		displayDict["j_"+name] = 0
+		displayDict["avg_na_"+name] = 0
+		displayDict["avg_nb_"+name] = 0
+		displayDict["total_time_"+name] = 0
+		displayDict["avg_dt_"+name] = 0
+		displayDict["processed_"+name] = 0
+		displayDict["needed_"+name] = 1
+
 		if i == wanted_threads-1:
-			p = Process(target=_eventCoin, args=(upper, numRows, numRows, spikes_a, spikes_b, np_sizes, win_t, eventMatrix, timecourse_length, fps, perc))
+			p = Process(target=_eventCoin, args=(upper, numRows, numRows, spikes_a[index_map], spikes_b[index_map], np_sizes[index_map], win_t, eventMatrix, timecourse_length, fps, perc, displayDict, name))
 		else:
 			lower = i*dataPer
 			upper = (i+1)*dataPer
-			p = Process(target=_eventCoin, args=(lower, upper, numRows, spikes_a, spikes_b, np_sizes, win_t, eventMatrix, timecourse_length, fps, perc))
+			p = Process(target=_eventCoin, args=(lower, upper, numRows, spikes_a[index_map], spikes_b[index_map], np_sizes[index_map], win_t, eventMatrix, timecourse_length, fps, perc, displayDict, name))
 		p.start()
 		threads.append(p)
 
+	_displayInfo(displayDict, wanted_threads, names)
 	print("All threads done")
 
-	eventMatrix = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0], perc.shape[0]))
+	eventMatrix = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, perc.shape[0], win_t.shape[0]))[inv_index_map][:,inv_index_map]
 	return eventMatrix
 
-def _eventCoin(rowsLower, rowsUpper, numRows, spikes_a, spikes_b, num_spikes, win_t, eventMatrix, timecourse_length, fps, perc):
+def _eventCoin(rowsLower, rowsUpper, numRows, spikes_a, spikes_b, num_spikes, win_t, eventMatrix, timecourse_length, fps, perc, dispDict, name):
 	print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
-	needed = (rowsUpper - rowsLower) * numRows
+	avg_na = FixedQueue(20)
+	avg_nb = FixedQueue(20)
+	total_time = time.clock()
+	avg_dt = FixedQueue(20)
+	dt = time.clock()
+	processed = 0
+	disp_time = 0
 
-	eventResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0], perc.shape[0]))
+	eventResults = np.empty((rowsUpper - rowsLower, numRows, perc.shape[0], win_t.shape[0]))
 	batches = spikes_a.shape[1]
 	coins = np.empty((batches, win_t.shape[0]))
 
+	needed = (rowsUpper - rowsLower) * numRows * batches
+	dispDict["needed_"+name] = needed
+
 	for i in range(rowsLower, rowsUpper):
 		for j in range(numRows):
-			all_spike_tcs1 = spikes_a[i,:num_spikes[i]]
-			all_spike_tcs2 = spikes_b[j,:num_spikes[j]]
+			all_spike_tcs1 = spikes_a[i,:,:num_spikes[i]]
+			all_spike_tcs2 = spikes_b[j,:,:num_spikes[j]]
 
 			for k in range(batches):
+				if time.clock() - disp_time >= 1:
+					dispDict["i_"+name] = i
+					dispDict["j_"+name] = j
+					dispDict["avg_na_"+name] = avg_na.sum/20
+					dispDict["avg_nb_"+name] = avg_nb.sum/20
+					dispDict["total_time_"+name] = time.clock() - total_time
+					dispDict["avg_dt_"+name] = avg_dt.sum/20
+					dispDict["processed_"+name] = processed
+					disp_time = time.clock()
+
+				processed += 1
+
 				event_data, na, nb = eventCoin(all_spike_tcs1[k], all_spike_tcs2[k], win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
 				coins[k] = event_data
 
-			eventResults[i-rowsLower, j] = #SOME SORT OF CALCULATION INVOLVING COINS
+				avg_dt.add_value(time.clock() - dt)
+				dt = time.clock()
+				avg_na.add_value(na)
+				avg_nb.add_value(nb)
 
-	eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0], perc.shape[0]))
+			eventResults[i-rowsLower, j] = np.nanpercentile(coins, perc, axis=0)
+
+	eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, perc.shape[0], win_t.shape[0]))
 	eventNp[rowsLower:rowsUpper] = eventResults
+	dispDict["done"] += 1
+	dispDict["i_"+name] = i
+	dispDict["j_"+name] = j
+	dispDict["total_time_"+name] = time.clock() - total_time
+	dispDict["processed_"+name] = processed
 
 #finds the most commonly occurring event frequency for a given time course to characterize it
 #start_spikes - the starting indices of each of the events in the timecourse
@@ -377,7 +431,16 @@ def miscellaneousGraphs():
 
 		plt.show()
 #eventGraphing("Outputs/171018_03_MatrixData_full.hdf5", dataFileName = "P2_timecourses.hdf5")
+data = hdf5manager("P2_timecourses.hdf5").load()["brain"]
+eventMatrix = generate_lookup(data, 10, 100, data.shape[0], n_interval = 10)
 
+
+fileData = {"table": eventMatrix}
+saveData = hdf5manager("Outputs/P2_lookup.hdf5")
+saveData.save(fileData)
+print("Saved event coincidence data to " + fileString)
+
+'''
 if __name__ == '__main__': 
 	import argparse
 
@@ -399,7 +462,7 @@ if __name__ == '__main__':
 		sys.exit()
 
 	# print(brain_data.shape)
-	bootstrapInfo
+	#bootstrapInfo
 	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "precursors":preMatrix}
 	fileString = ""
 	if ("expmeta" in data.keys()):
@@ -414,3 +477,4 @@ if __name__ == '__main__':
 
 	if args["graphs"] is not None:
 		eventGraphing(fileString, dataFile = data)
+'''
