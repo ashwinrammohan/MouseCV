@@ -457,9 +457,9 @@ if __name__ == '__main__':
 		data = hdf5manager("P2_timecourses.hdf5").load()["brain"]
 		eventMatrix = generate_lookup(data, 10, 100, data.shape[0], n_interval = 10)
 
-
+		fileString = "Outputs/P2_lookup.hdf5"
 		fileData = {"table": eventMatrix}
-		saveData = hdf5manager("Outputs/P2_lookup.hdf5")
+		saveData = hdf5manager(fileString)
 		saveData.save(fileData)
 		print("Saved event coincidence data to " + fileString)
 
