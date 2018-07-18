@@ -464,7 +464,7 @@ if __name__ == '__main__':
 
 	if args['lookup']:
 		data = hdf5manager("P2_timecourses.hdf5").load()["brain"]
-		eventMatrix = generate_lookup(data, 10, 100, data.shape[0], n_interval = 10)
+		eventMatrix = generate_lookup(data, 10, 100, data.shape[0], n_interval = 5)
 
 		fileString = "Outputs/P2_lookup.hdf5"
 		fileData = {"table": eventMatrix}
