@@ -223,7 +223,7 @@ def _eventCoin(rowsLower, rowsUpper, numRows, spikes_a, spikes_b, num_spikes, wi
 				bin_tcs1[all_spike_tcs1[k]] = 1
 				bin_tcs2[all_spike_tcs2[k]] = 1
 
-				event_data, na, nb = eventCoin(bin_tcs1, bin_tcs1, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
+				event_data, na, nb = eventCoin(bin_tcs1, bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
 				coins[k] = event_data
 
 				bin_tcs1[:] = 0
@@ -464,7 +464,7 @@ if __name__ == '__main__':
 
 	if args['lookup']:
 		data = hdf5manager("P2_timecourses.hdf5").load()["brain"]
-		eventMatrix = generate_lookup(data, 10, 100, data.shape[0], n_interval = 5)
+		eventMatrix = generate_lookup(data, 5, 100, data.shape[0], n_interval = 5)
 
 		fileString = "Outputs/P2_lookup.hdf5"
 		fileData = {"table": eventMatrix}
