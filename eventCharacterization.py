@@ -431,22 +431,14 @@ def miscellaneousGraphs():
 
 		plt.show()
 #eventGraphing("Outputs/171018_03_MatrixData_full.hdf5", dataFileName = "P2_timecourses.hdf5")
-data = hdf5manager("P2_timecourses.hdf5").load()["brain"]
-eventMatrix = generate_lookup(data, 10, 100, data.shape[0], n_interval = 10)
 
-
-fileData = {"table": eventMatrix}
-saveData = hdf5manager("Outputs/P2_lookup.hdf5")
-saveData.save(fileData)
-print("Saved event coincidence data to " + fileString)
-
-'''
 if __name__ == '__main__': 
 	import argparse
 
 	ap = argparse.ArgumentParser()
 	ap.add_argument('-f', '--filename', type = str, nargs = 1, required = True, help = 'name of hdf5 input file with ICA-filtered timecourses')
 	ap.add_argument('-g', '--graphs', action = "store_true", required = False, help = 'display graphs after completing')
+	ap.add_argument('-l', '--lookup', action = "store_true", required = False, help = 'generate the lookup table')
 
 	args = vars(ap.parse_args())
 
@@ -461,9 +453,19 @@ if __name__ == '__main__':
 		import sys
 		sys.exit()
 
+	if args['lookup']:
+		data = hdf5manager("P2_timecourses.hdf5").load()["brain"]
+		eventMatrix = generate_lookup(data, 10, 100, data.shape[0], n_interval = 10)
+
+
+		fileData = {"table": eventMatrix}
+		saveData = hdf5manager("Outputs/P2_lookup.hdf5")
+		saveData.save(fileData)
+		print("Saved event coincidence data to " + fileString)
+
 	# print(brain_data.shape)
 	#bootstrapInfo
-	fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "precursors":preMatrix}
+	'''fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "precursors":preMatrix}
 	fileString = ""
 	if ("expmeta" in data.keys()):
 		fileString = data['expmeta']['name']
@@ -473,8 +475,8 @@ if __name__ == '__main__':
 	fileString = "Outputs/" + fileString + "_MatrixData_full.hdf5"
 	saveData = hdf5manager(fileString)
 	saveData.save(fileData)
-	print("Saved event coincidence data to Outputs/" + fileString + "_MatrixData_full.hdf5")
+	print("Saved event coincidence data to Outputs/" + fileString + "_MatrixData_full.hdf5")'''
 
-	if args["graphs"] is not None:
+	if args["graphs"]:
 		eventGraphing(fileString, dataFile = data)
-'''
+

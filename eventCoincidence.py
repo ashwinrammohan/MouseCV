@@ -9,9 +9,8 @@ from multiprocessing import Process, Array, cpu_count, Manager
 import ctypes as c
 import cv2 as cv
 
-def _eventCoin(rowsLower, rowsUpper, numRows, spikes, num_spikes, win_t, eventMatrix, pMatrix, brain_data, fps, dispDict, name, graph = False):
+def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix, pMatrix, brain_data, fps, dispDict, name, graph = False):
 	print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
-
 	avg_na = FixedQueue(20)
 	avg_nb = FixedQueue(20)
 	total_time = time.clock()
@@ -41,9 +40,12 @@ def _eventCoin(rowsLower, rowsUpper, numRows, spikes, num_spikes, win_t, eventMa
 			processed += 1
 
 			if (i != j):
-				spike_tcs1 = spikes[i,:num_spikes[i]]
-				spike_tcs2 = spikes[j,:num_spikes[j]]
-				event_data, na, nb = eventCoin(spike_tcs1, spike_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
+				bin_tcs1 = binarized_data[i]
+				bin_tcs2 = binarized_data[j]
+				event_data, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
+
+				if graph:
+					plt.plot(bin_tcs1, 'bo'), plt.title("Index: " + str(i)), plt.show()
 
 				eventResults[i-rowsLower, j] = event_data
 				pResults[i-rowsLower, j] = getResults(event_data, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
@@ -69,49 +71,32 @@ def _eventCoin(rowsLower, rowsUpper, numRows, spikes, num_spikes, win_t, eventMa
 
 
 def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, end_event = True, threads = 0, stDev_threshold = 0.8):
+	binarized_data = np.zeros_like(brain_data).astype('uint8')
 	numRows = brain_data.shape[0]
-	spikes = []
+	start_spike_set = []
+	end_spike_set = []
 	win_t = np.arange((1/fps),max_window,(1/fps))
-	max_events = 0
 
 	print("Finding events...")
 
 	for i, dataRow in enumerate(brain_data):
+		binarizedRow = np.zeros_like(dataRow)
+
 		start_time = time.clock()
 		start_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3, peak_tolerance = 0.5)
 		print("Spikes at", i, "found in", (time.clock() - start_time), "seconds")
-
-		spikes.append([])
 		if start_event:
-			spikes[-1].append(start_spikes)
+			binarizedRow[start_spikes] = 1
 		if end_event:
-			spikes[-1].append(end_spikes)
+			binarizedRow[end_spikes] = 1
 
-		num_events = start_spikes.shape[0] + end_spikes.shape[0]
-		if num_events > max_events:
-			max_events = num_events
-
-	np_spikes = np.empty((numRows, max_events))
-	np_sizes = np.empty(numRows, dtype='uint8')
-	for i, events in enumerate(spikes):
-		starts = events[0]
-		ends = events[1]
-		total_length = starts.shape[0] + ends.shape[0]
-
-		np_spikes[i,:total_length:2] = starts
-		np_spikes[i,1:total_length:2] = ends
-
-		np_sizes[i] = total_length
-
-
-	event_order = np.argsort(np_sizes)[::-1]
-	np_sizes = np_sizes[event_order]
-	np_spikes = np_spikes[event_order]
+		binarized_data[i,:] = binarizedRow
 
 	if threads == 0:
 		wanted_threads = cpu_count()
 	else:
 		wanted_threads = threads
+
 
 	threads = []
 	print("Creating " + str(wanted_threads) + " threads...")
@@ -145,11 +130,11 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 		displayDict["needed_"+name] = 1
 
 		if i == wanted_threads-1:
-			p = Process(target=_eventCoin, args=(upper, numRows, numRows, np_spikes[index_map], np_sizes[index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name))
+			p = Process(target=_eventCoin, args=(upper, numRows, numRows, binarized_data[index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name))
 		else:
 			lower = i*dataPer
 			upper = (i+1)*dataPer
-			p = Process(target=_eventCoin, args=(lower, upper, numRows, np_spikes[index_map], np_sizes[index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name))
+			p = Process(target=_eventCoin, args=(lower, upper, numRows, binarized_data[index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name))
 		p.start()
 		threads.append(p)
 
@@ -178,7 +163,7 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 
 	return eventMatrix, pMatrix, preMatrix
 
-def eventCoin(a_ind, b_ind, #indeces of events of two signals to compare
+def eventCoin(a, b, #two binary signals to compare
 			  win_t, #vector of time (s) for window
 			  na = None, nb = None, #number of total events in each comparitive vector
 			  ratetype = 'precursor', #precursor or trigger
@@ -189,6 +174,10 @@ def eventCoin(a_ind, b_ind, #indeces of events of two signals to compare
 	
 	overall_time = time.clock()
 	start_time = time.clock()
+	
+	#find all indices for each event
+	a_ind = np.where(a != 0)[0]
+	b_ind = np.where(b != 0)[0]
 
 	if na == None:
 		na = a_ind.shape[0]
@@ -384,7 +373,7 @@ def visualizeProgress(window_name, i, j, avg_na, avg_nb, time_elapsed, avg_dt, p
 
 if __name__ == '__main__': 
 	import argparse
-	from eventCharacterization import eventCharacterization, eventGraphing
+	from eventCharacterization import *
 
 	ap = argparse.ArgumentParser()
 	ap.add_argument('-f', '--filename', type = str, nargs = 1, required = True, help = 'name of hdf5 input file with ICA-filtered timecourses')
@@ -439,9 +428,6 @@ if __name__ == '__main__':
 	else:
 		eventMatrix, pMatrix, preMatrix = test_ROI_timecourse(brain_data)
 		fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "precursors":preMatrix}
-
-		print(fileData)
-
 		fileString = ""
 		if ("expmeta" in data.keys()):
 			fileString = data['expmeta']['name']
@@ -451,8 +437,7 @@ if __name__ == '__main__':
 		fileString = "Outputs/" + fileString + "_MatrixData_full.hdf5"
 		saveData = hdf5manager(fileString)
 		saveData.save(fileData)
-		print("Saved event coincidence data to " + fileString)
+		print("Saved event coincidence data to Outputs/" + fileString + "_MatrixData_full.hdf5")
 
-		if args["graphs"] is not None:
-			pass
-			#eventGraphing(fileString, dataFile = data)
+		if args["graphs"]:
+			eventGraphing(fileString, dataFile = data)
