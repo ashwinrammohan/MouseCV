@@ -125,8 +125,8 @@ def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_interval = 25
 	np_sizes = np.arange(n_min, n_max, n_interval)
 	numRows = np_sizes.shape[0]
 	eventMatrix = Array(c.c_double, numRows*numRows*win_t.shape[0]*perc.shape[0])
-	spikes_a = np.empty((numRows, batches, n_max))
-	spikes_b = np.empty((numRows, batches, n_max))
+	spikes_a = np.empty((numRows, batches, n_max), dtype="uint8")
+	spikes_b = np.empty((numRows, batches, n_max), dtype="uint8")
 	np_durations, np_intervals = bootstrapData(brain_data)
 	displayDict = Manager().dict()
 	displayDict["done"] = 0
@@ -199,6 +199,9 @@ def _eventCoin(rowsLower, rowsUpper, numRows, spikes_a, spikes_b, num_spikes, wi
 	needed = (rowsUpper - rowsLower) * numRows * batches
 	dispDict["needed_"+name] = needed
 
+	bin_tcs1 = np.zeros((timecourse_length), dtype="uint8")
+	bin_tcs2 = np.zeros((timecourse_length), dtype="uint8")
+
 	for i in range(rowsLower, rowsUpper):
 		for j in range(numRows):
 			all_spike_tcs1 = spikes_a[i,:,:num_spikes[i]]
@@ -217,8 +220,14 @@ def _eventCoin(rowsLower, rowsUpper, numRows, spikes_a, spikes_b, num_spikes, wi
 
 				processed += 1
 
-				event_data, na, nb = eventCoin(all_spike_tcs1[k], all_spike_tcs2[k], win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
+				bin_tcs1[all_spike_tcs1[k]] = 1
+				bin_tcs2[all_spike_tcs2[k]] = 1
+
+				event_data, na, nb = eventCoin(bin_tcs1, bin_tcs1, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
 				coins[k] = event_data
+
+				bin_tcs1[:] = 0
+				bin_tcs2[:] = 0
 
 				avg_dt.add_value(time.clock() - dt)
 				dt = time.clock()
