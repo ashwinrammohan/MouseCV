@@ -109,7 +109,7 @@ def bootstrapInfo(np_durations, np_intervals, batches, n):
 	a_inds = np.cumsum(joined_array, axis = 1)[:,::2]
 	return a_inds
 
-def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_interval = 25, fps = 10,  max_window = 2, threads = 0, stDev_threshold = 0.8, batches = 10000):
+def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_interval = 25, fps = 10,  max_window = 2, threads = 0, stDev_threshold = 0.8, batches = 10000, rates = 1000):
 	if threads == 0:
 		wanted_threads = cpu_count()
 	else:
@@ -121,10 +121,9 @@ def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_interval = 25
 
 	print("Creating spikes data...")
 	t = time.clock()
-	perc = np.array([1, 2.5, 25, 50, 75, 97.5, 99])
 	np_sizes = np.arange(n_min, n_max, n_interval)
 	numRows = np_sizes.shape[0]
-	eventMatrix = Array(c.c_double, numRows*numRows*win_t.shape[0]*perc.shape[0])
+	eventMatrix = Array(c.c_double, numRows*numRows*win_t.shape[0]*rates)
 	spikes_a = np.empty((numRows, batches, n_max), dtype="uint8")
 	spikes_b = np.empty((numRows, batches, n_max), dtype="uint8")
 	np_durations, np_intervals = bootstrapData(brain_data)
@@ -168,21 +167,32 @@ def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_interval = 25
 		displayDict["needed_"+name] = 1
 
 		if i == wanted_threads-1:
-			p = Process(target=_eventCoin, args=(upper, numRows, numRows, spikes_a[index_map], spikes_b[index_map], np_sizes[index_map], win_t, eventMatrix, timecourse_length, fps, perc, displayDict, name))
+			p = Process(target=_eventCoin, args=(upper, numRows, numRows, spikes_a[index_map], spikes_b[index_map], np_sizes[index_map], win_t, eventMatrix, timecourse_length, fps, rates, displayDict, name))
 		else:
 			lower = i*dataPer
 			upper = (i+1)*dataPer
-			p = Process(target=_eventCoin, args=(lower, upper, numRows, spikes_a[index_map], spikes_b[index_map], np_sizes[index_map], win_t, eventMatrix, timecourse_length, fps, perc, displayDict, name))
+			p = Process(target=_eventCoin, args=(lower, upper, numRows, spikes_a[index_map], spikes_b[index_map], np_sizes[index_map], win_t, eventMatrix, timecourse_length, fps, rates, displayDict, name))
 		p.start()
 		threads.append(p)
 
 	_displayInfo(displayDict, wanted_threads, names)
 	print("All threads done")
 
-	eventMatrix = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, perc.shape[0], win_t.shape[0]))[inv_index_map][:,inv_index_map]
+	eventMatrix = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0], rates))[inv_index_map][:,inv_index_map]
 	return eventMatrix
 
-def _eventCoin(rowsLower, rowsUpper, numRows, spikes_a, spikes_b, num_spikes, win_t, eventMatrix, timecourse_length, fps, perc, dispDict, name):
+def p_values(coins, rates):
+	sorted_coins = np.sort(coins, axis=0)
+	p_vals = np.empty((coins.shape[1], rates.shape[0]))
+
+	for i in range(coins.shape[1]):
+		indices = np.searchsorted(sorted_coins[:,i], rates)
+		p_vals[i] = 1 - indices / coins.shape[0]
+
+	return p_vals
+
+
+def _eventCoin(rowsLower, rowsUpper, numRows, spikes_a, spikes_b, num_spikes, win_t, eventMatrix, timecourse_length, fps, rates, dispDict, name):
 	print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
 	avg_na = FixedQueue(20)
 	avg_nb = FixedQueue(20)
@@ -191,8 +201,9 @@ def _eventCoin(rowsLower, rowsUpper, numRows, spikes_a, spikes_b, num_spikes, wi
 	dt = time.clock()
 	processed = 0
 	disp_time = 0
+	np_rates = np.arange(0,1,1.0/rates)
 
-	eventResults = np.empty((rowsUpper - rowsLower, numRows, perc.shape[0], win_t.shape[0]))
+	eventResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0], rates))
 	batches = spikes_a.shape[1]
 	coins = np.empty((batches, win_t.shape[0]))
 
@@ -234,9 +245,10 @@ def _eventCoin(rowsLower, rowsUpper, numRows, spikes_a, spikes_b, num_spikes, wi
 				avg_na.add_value(na)
 				avg_nb.add_value(nb)
 
-			eventResults[i-rowsLower, j] = np.nanpercentile(coins, perc, axis=0)
+			eventResults[i-rowsLower, j] = p_values(coins, np_rates)
+			#eventResults[i-rowsLower, j] = np.nanpercentile(coins, perc, axis=0)
 
-	eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, perc.shape[0], win_t.shape[0]))
+	eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0], rates))
 	eventNp[rowsLower:rowsUpper] = eventResults
 	dispDict["done"] += 1
 	dispDict["i_"+name] = i
@@ -464,7 +476,7 @@ if __name__ == '__main__':
 
 	if args['lookup']:
 		data = hdf5manager("P2_timecourses.hdf5").load()["brain"]
-		eventMatrix = generate_lookup(data, 5, 100, data.shape[0], n_interval = 5)
+		eventMatrix = generate_lookup(data, 10, 100, data.shape[0], n_interval = 10)
 
 		fileString = "Outputs/P2_lookup.hdf5"
 		fileData = {"table": eventMatrix}
