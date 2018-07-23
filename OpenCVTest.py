@@ -28,10 +28,11 @@ def load_mp4(vid_name):
 	cap.release()
 	return vid
 
-vid_name = "180720_05_under"
+vid_name = "180713_12_under"
 mouse_vid = load_mp4(vid_name)
+print("Loaded mp4")
 hdf5FilePath = "mouse_vectors.hdf5"
-hdf5File = hdf5manager("Assets/" + hdf5FilePath)
+hdf5File = hdf5manager(hdf5FilePath)
 mouse_frame = mouse_vid[300]
 
 hdf5Dict = {}
