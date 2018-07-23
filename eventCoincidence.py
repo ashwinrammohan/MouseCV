@@ -48,7 +48,7 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 					plt.plot(bin_tcs1, 'bo'), plt.title("Index: " + str(i)), plt.show()
 
 				eventResults[i-rowsLower, j] = event_data
-				pResults[i-rowsLower, j] = getResults(event_data, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
+				pResults[i-rowsLower, j] = getResults(event_data, lookup_table=lookup_table win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
 
 				avg_dt.add_value(time.clock() - dt)
 				dt = time.clock()
