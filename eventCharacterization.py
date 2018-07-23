@@ -109,7 +109,7 @@ def bootstrapInfo(np_durations, np_intervals, batches, n):
 	a_inds = np.cumsum(joined_array, axis = 1)[:,::2]
 	return a_inds
 
-def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_interval = 25, fps = 10,  max_window = 2, threads = 0, stDev_threshold = 0.8, batches = 10000, rates = 1000):
+def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_interval = 25, fps = 10,  max_window = 2, threads = 0, stDev_threshold = 0.8, batches = 10000, percent = 0.05, mid_interval = 100):
 	if threads == 0:
 		wanted_threads = cpu_count()
 	else:
@@ -120,10 +120,14 @@ def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_interval = 25
 	threads = []
 
 	print("Creating spikes data...")
+	rates = int(batches * percent)
+	mid_indices = np.arange(rates, batches-rates, mid_interval)
+	total_rates = rates*2 + mid_indices.shape[0]
+
 	t = time.clock()
 	np_sizes = np.arange(n_min, n_max, n_interval)
 	numRows = np_sizes.shape[0]
-	eventMatrix = Array(c.c_double, numRows*numRows*win_t.shape[0]*rates)
+	eventMatrix = Array(c.c_double, numRows*numRows*win_t.shape[0]*total_rates)
 	spikes_a = np.empty((numRows, batches, n_max), dtype="uint8")
 	spikes_b = np.empty((numRows, batches, n_max), dtype="uint8")
 	np_durations, np_intervals = bootstrapData(brain_data)
@@ -167,19 +171,26 @@ def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_interval = 25
 		displayDict["needed_"+name] = 1
 
 		if i == wanted_threads-1:
-			p = Process(target=_eventCoin, args=(upper, numRows, numRows, spikes_a[index_map], spikes_b[index_map], np_sizes[index_map], win_t, eventMatrix, timecourse_length, fps, rates, displayDict, name))
+			p = Process(target=_eventCoin, args=(upper, numRows, numRows, spikes_a[index_map], spikes_b[index_map], np_sizes[index_map], win_t, eventMatrix, timecourse_length, fps, rates, mid_interval, displayDict, name))
 		else:
 			lower = i*dataPer
 			upper = (i+1)*dataPer
-			p = Process(target=_eventCoin, args=(lower, upper, numRows, spikes_a[index_map], spikes_b[index_map], np_sizes[index_map], win_t, eventMatrix, timecourse_length, fps, rates, displayDict, name))
+			p = Process(target=_eventCoin, args=(lower, upper, numRows, spikes_a[index_map], spikes_b[index_map], np_sizes[index_map], win_t, eventMatrix, timecourse_length, fps, rates, mid_interval, displayDict, name))
 		p.start()
 		threads.append(p)
 
 	_displayInfo(displayDict, wanted_threads, names)
 	print("All threads done")
 
-	eventMatrix = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0], rates))[inv_index_map][:,inv_index_map]
-	return eventMatrix
+	eventMatrix = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0], total_rates))[inv_index_map][:,inv_index_map]
+
+	p_vals = np.empty(total_rates)
+	p_vals[:rates] = np.arange(0,rates)
+	p_vals[-rates:] = np.arange(batches-rates,batches)
+	p_vals[rates:rates+mid_indices.shape[0]] = mid_indices
+	p_vals = p_vals/batches
+
+	return eventMatrix, p_vals
 
 def p_values(coins, rates):
 	sorted_coins = np.sort(coins, axis=0)
@@ -187,12 +198,12 @@ def p_values(coins, rates):
 
 	for i in range(coins.shape[1]):
 		indices = np.searchsorted(sorted_coins[:,i], rates)
-		p_vals[i] = 1 - indices / coins.shape[0]
+		p_vals[i] = indices / coins.shape[0]
 
 	return p_vals
 
 
-def _eventCoin(rowsLower, rowsUpper, numRows, spikes_a, spikes_b, num_spikes, win_t, eventMatrix, timecourse_length, fps, rates, dispDict, name):
+def _eventCoin(rowsLower, rowsUpper, numRows, spikes_a, spikes_b, num_spikes, win_t, eventMatrix, timecourse_length, fps, rates, mid_interval, dispDict, name):
 	print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
 	avg_na = FixedQueue(20)
 	avg_nb = FixedQueue(20)
@@ -201,10 +212,12 @@ def _eventCoin(rowsLower, rowsUpper, numRows, spikes_a, spikes_b, num_spikes, wi
 	dt = time.clock()
 	processed = 0
 	disp_time = 0
-	np_rates = np.arange(0,1,1.0/rates)
-
-	eventResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0], rates))
 	batches = spikes_a.shape[1]
+	#np_rates = np.arange(0,1,1.0/rates)
+	mid_indices = np.arange(rates, batches-rates, mid_interval)
+	total_rates = rates*2 + mid_indices.shape[0]
+
+	eventResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0], total_rates))
 	coins = np.empty((batches, win_t.shape[0]))
 
 	needed = (rowsUpper - rowsLower) * numRows * batches
@@ -245,10 +258,14 @@ def _eventCoin(rowsLower, rowsUpper, numRows, spikes_a, spikes_b, num_spikes, wi
 				avg_na.add_value(na)
 				avg_nb.add_value(nb)
 
-			eventResults[i-rowsLower, j] = p_values(coins, np_rates)
-			#eventResults[i-rowsLower, j] = np.nanpercentile(coins, perc, axis=0)
+			#eventResults[i-rowsLower, j] = p_values(coins, np_rates)
+			sorted_coins = np.sort(coins, axis=0)
+			for k in range(win_t.shape[0]):
+				eventResults[i-rowsLower, j, k, :rates] = sorted_coins[:rates, k]
+				eventResults[i-rowsLower, j, k, rates:rates+mid_indices.shape[0]] = sorted_coins[mid_indices, k]
+				eventResults[i-rowsLower, j, k, rates+mid_indices.shape[0]:] = sorted_coins[-rates:, k]
 
-	eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0], rates))
+	eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0], total_rates))
 	eventNp[rowsLower:rowsUpper] = eventResults
 	dispDict["done"] += 1
 	dispDict["i_"+name] = i
@@ -476,10 +493,18 @@ if __name__ == '__main__':
 
 	if args['lookup']:
 		data = hdf5manager("P2_timecourses.hdf5").load()["brain"]
-		eventMatrix = generate_lookup(data, 10, 100, data.shape[0], n_interval = 10)
+		max_n  = 56
+		n_interval = 1
+		min_n = 50#n_interval
+		eventMatrix, p_vals = generate_lookup(data, min_n, max_n, data.shape[0], n_interval = n_interval)
+		shp = eventMatrix.shape
+		fullMatrix = np.empty((shp[0]+1, shp[1]+1, shp[2], shp[3]), dtype=eventMatrix.dtype)
+		fullMatrix[1:,1:] = eventMatrix
+		fullMatrix[0] = 0.5 # for na of 0
+		fullMatrix[:,0] = 0.5 # for nb of 0
 
 		fileString = "Outputs/P2_lookup.hdf5"
-		fileData = {"table": eventMatrix}
+		fileData = {"table": eventMatrix, "interval":n_interval, "max_n":max_n, "p_values":p_vals}
 		saveData = hdf5manager(fileString)
 		saveData.save(fileData)
 		print("Saved event coincidence data to " + fileString)

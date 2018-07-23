@@ -9,7 +9,7 @@ from multiprocessing import Process, Array, cpu_count, Manager
 import ctypes as c
 import cv2 as cv
 
-def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix, pMatrix, brain_data, fps, dispDict, name, graph = False):
+def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix, pMatrix, brain_data, fps, dispDict, name, lookup_table, graph = False):
 	print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
 	avg_na = FixedQueue(20)
 	avg_nb = FixedQueue(20)
@@ -70,7 +70,7 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 	dispDict["processed_"+name] = processed
 
 
-def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, end_event = True, threads = 0, stDev_threshold = 0.8):
+def test_ROI_timecourse(brain_data, lookup_table, fps = 10,  max_window = 2, start_event = True, end_event = True, threads = 0, stDev_threshold = 0.8):
 	binarized_data = np.zeros_like(brain_data).astype('uint8')
 	numRows = brain_data.shape[0]
 	start_spike_set = []
@@ -130,11 +130,11 @@ def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = Tru
 		displayDict["needed_"+name] = 1
 
 		if i == wanted_threads-1:
-			p = Process(target=_eventCoin, args=(upper, numRows, numRows, binarized_data[index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name))
+			p = Process(target=_eventCoin, args=(upper, numRows, numRows, binarized_data[index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name, lookup_table))
 		else:
 			lower = i*dataPer
 			upper = (i+1)*dataPer
-			p = Process(target=_eventCoin, args=(lower, upper, numRows, binarized_data[index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name))
+			p = Process(target=_eventCoin, args=(lower, upper, numRows, binarized_data[index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name, lookup_table))
 		p.start()
 		threads.append(p)
 
@@ -275,6 +275,7 @@ def getResults(rate_win,
 			  win_t, #vector of time (s) for window
 			  na, #number of events in a
 			  nb, #number of event in b
+			  lookup_table, #rate and p-values to compare against
 			  ratetype = 'precursor', #precursor or trigger
 			  T = 600, #length (s) of vector
 			  tau = 0, #lag coefficeint 
@@ -336,6 +337,84 @@ def getResults(rate_win,
 
 	return results
 
+def pValForRate(lookup_table, rate, na, nb, win_t_index):
+	tbl_interval = lookup_table["interval"]
+	data = lookup_table["table"]
+	p_vals = lookup_table["p_values"]
+
+	na_lower = na // tbl_interval
+	na_upper = min(na_lower + 1, data.shape[0] - 1)
+
+	nb_lower = nb // tbl_interval
+	nb_upper = min(nb_lower + 1, data.shape[1] - 1)
+
+	lower_array = data[na_lower, nb_lower, win_t_index]
+	upper_na_array = data[na_upper, nb_lower, win_t_index]
+	upper_nb_array = data[na_lower, nb_upper, win_t_index]
+
+	print("lower:", lower_array)
+	print("upper na:", upper_na_array)
+	print("upper nb:", upper_nb_array)
+
+	p_lower_i = np.searchsorted(lower_array, rate)
+	p_lower = listInterp(lower_array, p_vals, p_lower_i, data.shape[3] - 1, rate)
+
+	p_upper_na_i = np.searchsorted(upper_na_array, rate)
+	p_upper_na = listInterp(upper_na_array, p_vals, p_upper_na_i, data.shape[3] - 1, rate)
+
+	p_upper_nb_i = np.searchsorted(upper_nb_array, rate)
+	p_upper_nb = listInterp(upper_nb_array, p_vals, p_upper_nb_i, data.shape[3] - 1, rate)
+
+	p1 = np.empty(3)
+	p1[0] = na_lower
+	p1[1] = nb_lower
+	p1[2] = p_lower
+
+	p2 = np.empty(3)
+	p2[0] = na_upper
+	p2[1] = nb_lower
+	p2[2] = p_upper_na
+
+	p3 = np.empty(3)
+	p3[0] = na_lower
+	p3[1] = nb_upper
+	p3[2] = p_upper_nb
+
+	print("P1:", p1)
+	print("P2:", p2)
+	print("P3:", p3)
+
+	v1 = p3 - p1
+	v2 = p2 - p1
+	crs = np.cross(v1, v2) # ax + by + cz = d
+	a, b, c = crs
+	d = np.sum(np.multiply(p1, crs))
+
+	# (d - ax - by) / c = z
+	p_val = (d - a*na/tbl_interval - b*nb/tbl_interval) / c
+	return p_val
+
+def linearInterp(x1, x2, y1, y2, x):
+	dx = x2 - x1
+	dy = y2 - y1
+
+	if dx == 0:
+		return (y1 + y2) / 2
+	else:
+		t = (x - x1) / dx
+		return dy * t + y1
+
+def listInterp(xList, yList, lowerIndex, max_index, value):
+	upperIndex = min(lowerIndex + 1, max_index)
+
+	xStart = xList[lowerIndex]
+	xEnd = xList[upperIndex]
+	yStart = yList[lowerIndex]
+	yEnd = yList[upperIndex]
+
+	return linearInterp(xStart, xEnd, yStart, yEnd, value)
+
+
 def _displayInfo(displayDict, wanted_threads, names):
 	print("------ DISPLAYING INFO ------")
 	positions = [(0, 0), (500, 0), (1000, 0), (0, 500), (500, 500), (1000, 500), (0, 1000), (500, 1000)]
@@ -380,10 +459,12 @@ if __name__ == '__main__':
 	ap.add_argument('-i', '--i', type = int, nargs = 1, required = False, help = 'index of specific timecourse')
 	ap.add_argument('-j', '--j', type = int, nargs = 1, required = False, help = 'index of other specific timecourse')
 	ap.add_argument('-g', '--graphs', action = "store_true", required = False, help = 'display graphs after completing')
+	ap.add_argument('-t', '--table', type = str, nargs = 1, required=True, help = 'file location of lookup table for p values')
 
 	args = vars(ap.parse_args())
 
 	data = hdf5manager(args['filename'][0]).load()
+	table = hdf5manager(args['table'][0]).load()
 
 	if "ROI_timecourses" in data.keys():
 		brain_data = data['ROI_timecourses']
@@ -426,7 +507,7 @@ if __name__ == '__main__':
 		plt.plot(event_data)
 		plt.show()
 	else:
-		eventMatrix, pMatrix, preMatrix = test_ROI_timecourse(brain_data)
+		eventMatrix, pMatrix, preMatrix = test_ROI_timecourse(brain_data, table)
 		fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "precursors":preMatrix}
 		fileString = ""
 		if ("expmeta" in data.keys()):
