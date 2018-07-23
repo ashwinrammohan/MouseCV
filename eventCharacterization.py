@@ -98,16 +98,26 @@ def bootstrapData(brain_data):
 
 	return np_durations, np_intervals
 
-def bootstrapInfo(np_durations, np_intervals, batches, n):
+def bootstrapInfo(np_durations, np_intervals, batches, n, max_length):
 	duration_rand_inds = np.random.randint(np_durations.shape[0], size = n * batches)
 	interval_rand_inds = np.random.randint(np_intervals.shape[0], size = n * batches)
 
 	joined_array = np.empty((batches, n * 2))
-	joined_array[:,::2] = np_durations[duration_rand_inds].reshape((batches, n))
-	joined_array[:,1::2] = np_intervals[interval_rand_inds].reshape((batches, n))
+	durations = np_durations[duration_rand_inds].reshape((batches, n))
+	intervals = np_intervals[interval_rand_inds].reshape((batches, n))
+
+	durations_totals = np.sum(durations, axis=1)
+	intervals_totals = np.sum(intervals, axis=1)
+	maxs = np.repeat(max_length, batches)
+	spaces = maxs - durations_totals
+	ratios = (spaces/intervals_totals)[...,None]
+	intervals = intervals * ratios
+
+	joined_array[:,::2] = durations
+	joined_array[:,1::2] = intervals
 
 	a_inds = np.cumsum(joined_array, axis = 1)[:,::2]
-	return a_inds
+	return np.floor(a_inds)
 
 def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_interval = 25, fps = 10,  max_window = 2, threads = 0, stDev_threshold = 0.8, batches = 10000, percent = 0.05, mid_interval = 100):
 	if threads == 0:
@@ -135,8 +145,8 @@ def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_interval = 25
 	displayDict["done"] = 0
 
 	for i in range(numRows):
-		a_ind = bootstrapInfo(np_durations, np_intervals, batches, np_sizes[i])
-		b_ind = bootstrapInfo(np_durations, np_intervals, batches, np_sizes[i])
+		a_ind = bootstrapInfo(np_durations, np_intervals, batches, np_sizes[i], timecourse_length)
+		b_ind = bootstrapInfo(np_durations, np_intervals, batches, np_sizes[i], timecourse_length)
 
 		spikes_a[i][:,:np_sizes[i]] = a_ind
 		spikes_b[i][:,:np_sizes[i]] = b_ind
