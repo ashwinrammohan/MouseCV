@@ -156,7 +156,7 @@ def test_ROI_timecourse(brain_data, lookup_table, fps = 10,  max_window = 2, sta
 	#print(eventMatrix[:,:,7])
 	#print(pMatrix[:,:,7])
 
-	cutoff = 0.0000001 #1% cutoff for p values
+	cutoff = 0.05 #1% cutoff for p values
 	preMatrix = np.zeros_like(pMatrix, dtype=bool)
 	preMatrix[pMatrix < cutoff] = True
 	preMatrix[pMatrix > 1 - cutoff] = True
@@ -291,7 +291,7 @@ def getResults(rate_win,
 	results = np.zeros(win_t.shape[0])
 
 	for i in range(win_t.shape[0]):
-		results[i] = pValForRate(lookup_table, rate_win[i], na, nb, i)
+		results[i] = pValForRate(lookup_table, rate_win[i], na/2, nb/2, i)
 		if veryVerbose:
 			print(str(win_t[i]) + 'sec(s) time window produces a p value: ' + str(results[i]))
 	
@@ -305,10 +305,10 @@ def pValForRate(lookup_table, rate, na, nb, win_t_index):
 	data = lookup_table["table"]
 	p_vals = lookup_table["p_values"]
 
-	na_lower = na // tbl_interval
+	na_lower = int(na // tbl_interval)
 	na_upper = min(na_lower + 1, data.shape[0] - 1)
 
-	nb_lower = nb // tbl_interval
+	nb_lower = int(nb // tbl_interval)
 	nb_upper = min(nb_lower + 1, data.shape[1] - 1)
 
 	lower_array = data[na_lower, nb_lower, win_t_index]
@@ -360,15 +360,16 @@ def linearInterp(x1, x2, y1, y2, x):
 		return dy * t + y1
 
 def listInterp(xList, yList, lowerIndex, max_index, value):
-	upperIndex = min(lowerIndex + 1, max_index)
+	lowerIndex = min(lowerIndex, max_index-1)
+	upperIndex = lowerIndex + 1
 
 	xStart = xList[lowerIndex]
 	xEnd = xList[upperIndex]
 	yStart = yList[lowerIndex]
 	yEnd = yList[upperIndex]
 
-	print("Rate:", value, "Rate - Lower:", xStart, "Upper:", xEnd, "P-Val - Lower:", yStart, "Upper:", yEnd)
-	print("Indices - Lower:", lowerIndex, "Upper:", upperIndex)
+	# print("Rate:", value, "Rate - Lower:", xStart, "Upper:", xEnd, "P-Val - Lower:", yStart, "Upper:", yEnd)
+	# print("Indices - Lower:", lowerIndex, "Upper:", upperIndex)
 
 	return linearInterp(xStart, xEnd, yStart, yEnd, value)
 
@@ -473,10 +474,10 @@ if __name__ == '__main__':
 		else:
 			fileString = args['filename'][0].split("_")[0]
 
-		fileString = "Outputs/" + fileString + "_MatrixData_full.hdf5"
+		fileString = "Outputs/" + fileString + "_MatrixData_full_interp.hdf5"
 		saveData = hdf5manager(fileString)
 		saveData.save(fileData)
-		print("Saved event coincidence data to Outputs/" + fileString + "_MatrixData_full.hdf5")
+		print("Saved event coincidence data to " + fileString)
 
 		if args["graphs"]:
 			eventGraphing(fileString, dataFile = data)
