@@ -95,7 +95,7 @@ def bootstrapData(brain_data):
 	np_durations = np_end_spikes - np_start_spikes
 	np_intervals = np_start_spikes[1:] - np_end_spikes[:-1]
 	np_intervals = np_intervals[np_intervals >= 0]
-
+	
 	return np_durations, np_intervals
 
 def bootstrapInfo(np_durations, np_intervals, batches, n, max_length):

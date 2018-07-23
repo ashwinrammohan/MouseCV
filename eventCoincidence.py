@@ -70,7 +70,7 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 	dispDict["processed_"+name] = processed
 
 
-def test_ROI_timecourse(brain_data, lookup_table, fps = 10,  max_window = 2, start_event = True, end_event = True, threads = 0, stDev_threshold = 0.8):
+def test_ROI_timecourse(brain_data, lookup_table, fps = 10,  max_window = 2, start_event = True, end_event = False, threads = 0, stDev_threshold = 0.8):
 	binarized_data = np.zeros_like(brain_data).astype('uint8')
 	numRows = brain_data.shape[0]
 	start_spike_set = []

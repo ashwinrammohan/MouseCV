@@ -172,7 +172,12 @@ def test_amplitude():
 	plt.show()
 
 def test_timecourse():
-	data = hdf5manager("P2_timecourses.hdf5").load()["brain"]
+	data = hdf5manager("P7_timecourses_domainROI.hdf5").load()["ROI_timecourses"]
+	start_spikes, end_spikes, vals = detectSpikes(data[5], -0.3, peak_tolerance = 0)
+	plt.plot(vals)
+	plt.show()
+	start_spikes, end_spikes, vals = detectSpikes(data[7], -0.3, peak_tolerance = 0.5)
+	print(len(start_spikes)+len(end_spikes))
 
 	specific_is = [0,5,10]
 
@@ -219,5 +224,5 @@ def test_timecourse():
 		# 	plt.axvline(x = i, color = 'red')
 
 
-#test_timecourse()
+test_timecourse()
 
