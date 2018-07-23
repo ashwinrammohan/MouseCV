@@ -284,53 +284,16 @@ def getResults(rate_win,
 			  veryVerbose = False):
 	
 	if na == 0 or nb == 0:
-		return np.ones(win_t.shape[0])
+		return np.repeat(np.NaN, win_t.shape[0])
 
 	start_time = time.clock()
-	#expected rate and stdev of the rate
-	if ratetype == 'precursor':
-		rho = 1 - win_t/(T - tau)
-		exp_rate = na*(1 - (rho)**nb)
-		exp_std = np.sqrt(1/na*(1-rho**nb) * rho**nb)
-	if ratetype == 'trigger':
-		rho = 1 - win_t/(T - tau)
-		exp_rate = nb*(1 - (rho)**na)
-		exp_std = np.sqrt(1/nb*(1-rho**na) * rho**na)
-	
-	#quantiles used for graphing
-	if verbose:
-		perc = np.array([1, 2.5, 25, 50, 75, 97.5, 99])/100
-		mark = ['k:', 'k-.', 'k--', 'k-', 'k--','k-.', 'k:']
-		quantile = np.zeros((exp_rate.shape[0], perc.shape[0]))
 
-	results = np.zeros(exp_rate.shape[0])
+	results = np.zeros(win_t.shape[0])
 
-	for i, r in enumerate(exp_rate):
-		if ratetype == 'precursor':
-			if verbose:
-				quantile[i,:] = poisson.ppf(perc, r)/na
-			results[i] = poisson.cdf(rate_win[i]*na,r)
-		if ratetype == 'trigger':
-			if verbose:
-				quantile[i,:] = poisson.ppf(perc, r)/nb
-			results[i] = poisson.cdf(rate_win[i]*nb,r)
+	for i in range(win_t.shape[0]):
+		results[i] = pValForRate(lookup_table, rate_win[i], na, nb, i)
 		if veryVerbose:
 			print(str(win_t[i]) + 'sec(s) time window produces a p value: ' + str(results[i]))
-
-	if verbose:
-		for j, r in enumerate(results):
-			if r < 0.05:
-				print(str(win_t[j]) + 'sec(s) time window produces a significant value: p=' + str(r))
-	
-		for i in range(len(perc)):
-			plt.plot(win_t, quantile[:, i], mark[i], label=perc[i])
-
-		plt.plot(win_t, rate_win)
-		plt.title('Rates per time window')
-		plt.xlabel('Time window (sec)')
-		plt.ylabel('Precursor coincidence rate')
-		plt.legend()
-		plt.show()
 	
 	if veryVerbose:
 		print("Elapsed time: " + str(time.clock() - start_time))
@@ -351,10 +314,6 @@ def pValForRate(lookup_table, rate, na, nb, win_t_index):
 	lower_array = data[na_lower, nb_lower, win_t_index]
 	upper_na_array = data[na_upper, nb_lower, win_t_index]
 	upper_nb_array = data[na_lower, nb_upper, win_t_index]
-
-	print("lower:", lower_array)
-	print("upper na:", upper_na_array)
-	print("upper nb:", upper_nb_array)
 
 	p_lower_i = np.searchsorted(lower_array, rate)
 	p_lower = listInterp(lower_array, p_vals, p_lower_i, data.shape[3] - 1, rate)
@@ -379,10 +338,6 @@ def pValForRate(lookup_table, rate, na, nb, win_t_index):
 	p3[0] = na_lower
 	p3[1] = nb_upper
 	p3[2] = p_upper_nb
-
-	print("P1:", p1)
-	print("P2:", p2)
-	print("P3:", p3)
 
 	v1 = p3 - p1
 	v2 = p2 - p1
@@ -411,6 +366,9 @@ def listInterp(xList, yList, lowerIndex, max_index, value):
 	xEnd = xList[upperIndex]
 	yStart = yList[lowerIndex]
 	yEnd = yList[upperIndex]
+
+	print("Rate:", value, "Rate - Lower:", xStart, "Upper:", xEnd, "P-Val - Lower:", yStart, "Upper:", yEnd)
+	print("Indices - Lower:", lowerIndex, "Upper:", upperIndex)
 
 	return linearInterp(xStart, xEnd, yStart, yEnd, value)
 

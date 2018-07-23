@@ -493,7 +493,7 @@ if __name__ == '__main__':
 
 	if args['lookup']:
 		data = hdf5manager("P2_timecourses.hdf5").load()["brain"]
-		max_n  = 56
+		max_n  = 60
 		n_interval = 1
 		min_n = 50#n_interval
 		eventMatrix, p_vals = generate_lookup(data, min_n, max_n, data.shape[0], n_interval = n_interval)
@@ -503,8 +503,8 @@ if __name__ == '__main__':
 		fullMatrix[0] = 0.5 # for na of 0
 		fullMatrix[:,0] = 0.5 # for nb of 0
 
-		fileString = "Outputs/P2_lookup.hdf5"
-		fileData = {"table": eventMatrix, "interval":n_interval, "max_n":max_n, "p_values":p_vals}
+		fileString = "Outputs/P2_lookup_dense.hdf5"
+		fileData = {"table": fullMatrix, "interval":n_interval, "max_n":max_n, "p_values":p_vals}
 		saveData = hdf5manager(fileString)
 		saveData.save(fileData)
 		print("Saved event coincidence data to " + fileString)
