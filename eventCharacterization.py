@@ -10,6 +10,8 @@ from multiprocessing import Process, Array, cpu_count, Manager
 import pandas as pd
 import time
 
+nRange = 5
+
 #Characterizes each timecourse in a matrix of brain data by number of events, event frequency, maximum event magnitude
 #and average inter-event interval (time between consecutive events). Each event in each timecourse is further characterized
 #by its magnitude and duration
@@ -58,47 +60,59 @@ def eventCharacterization(brain_data):
 def bootstrapData(brain_data):
 	numRows = brain_data.shape[0]
 
-	all_start_spikes = []
-	all_end_spikes = []
-	total_start_events = 0
-	total_end_events = 0
+	np_durations = []
+	np_intervals = []
 
 	for i in range(numRows):
 		print("Doing timecourse number " + str(i))
 		dataRow = brain_data[i]
 		start_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3)
-		
-		total_start_events += start_spikes.shape[0]
-		total_end_events += end_spikes.shape[0]
-		all_start_spikes.append(start_spikes)
-		all_end_spikes.append(end_spikes)
 
-	np_start_spikes = np.empty(total_start_events)
-	np_end_spikes = np.empty(total_end_events)
+		if (start_spikes.shape[0] > 250):
+			plt.plot(vals)
+			plt.show()
 
-	lower = 0
-	upper = 0
+		dur = end_spikes - start_spikes
+		inter = start_spikes[1:] - end_spikes[:-1]
+		inter = inter[inter >= 0]
 
-	for spikes in all_start_spikes:
-		upper += spikes.shape[0] 
-		np_start_spikes[lower:upper] = spikes
-		lower = upper
+		bin = start_spikes.shape[0] // nRange
+		if (bin >= len(np_durations)):
+			needed = bin - len(np_durations) + 1
+			np_durations.extend([None]*needed)
+			np_intervals.extend([None]*needed)
 
-	lower = 0
-	upper = 0
+		if np_durations[bin] is None:
+			np_durations[bin] = dur
+			np_intervals[bin] = inter
+		else:
+			newDur = np.empty(dur.shape[0] + np_durations[bin].shape[0])
+			newInter = np.empty(inter.shape[0] + np_intervals[bin].shape[0])
 
-	for spikes in all_end_spikes:
-		upper += spikes.shape[0] 
-		np_end_spikes[lower:upper] = spikes
-		lower = upper
+			if dur.shape[0] > 0:
+				newDur[:-dur.shape[0]] = np_durations[bin]
+				newDur[-dur.shape[0]:] = dur
+				np_durations[bin] = newDur
 
-	np_durations = np_end_spikes - np_start_spikes
-	np_intervals = np_start_spikes[1:] - np_end_spikes[:-1]
-	np_intervals = np_intervals[np_intervals >= 0]
+			if inter.shape[0] > 0:
+				newInter[:-inter.shape[0]] = np_intervals[bin]
+				newInter[-inter.shape[0]:] = inter
+				np_intervals[bin] = newInter
+
+	for i, dur in enumerate(np_durations):
+		if dur is None:
+			np_durations[i] = np.empty(0)
+			np_intervals[i] = np.empty(0)
 
 	return np_durations, np_intervals
 
 def bootstrapInfo(np_durations, np_intervals, batches, n, max_length):
+	np_durations = np_durations[n // nRange]
+	np_intervals = np_intervals[n // nRange]
+
+	if np_durations.shape[0] == 0:
+		return np.zeros((batches, n))
+
 	duration_rand_inds = np.random.randint(np_durations.shape[0], size = n * batches)
 	interval_rand_inds = np.random.randint(np_intervals.shape[0], size = n * batches)
 
@@ -111,6 +125,7 @@ def bootstrapInfo(np_durations, np_intervals, batches, n, max_length):
 	maxs = np.repeat(max_length, batches)
 	spaces = maxs - durations_totals
 	ratios = (spaces/intervals_totals)[...,None]
+	print("Ratios:", ratios)
 	intervals = intervals * ratios
 
 	joined_array[:,::2] = durations

@@ -76,7 +76,13 @@ def loadHDF5(file_name):
 # `high_pass` is the value passed to the butterworth filter which cuts off high frequencies. The number itself must range from 0 to 1, but 
 # what the numbers actually means is unclear. Regardless, a lower value will cut off more frequencies.
 def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start = 0, peak_tolerance = 0, high_pass = 0.5):
-	#data = data - np.amin(data)
+	mina = np.amin(data)
+	maxa = np.amax(data)
+	mean = np.mean(data)
+
+	if mean > (mina + maxa)/2: # flip data if needed
+		data = data*-1
+
 	data = butterworth(data, high = high_pass, low = None) # smooth/de-noise the data
 
 	df = data[1:] - data[:-1] # get derivates
@@ -100,13 +106,14 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 	end_spikes = list(df_peaks + 1)#list(np.intersect1d(df_peaks, dff_peaks) + 1)
 
 	if (peak_tolerance == 0):
-		peak_tolerance = np.std(data)/3 # if no peak_tolerance is given, the standard deviation is used to guess a good min height
+		peak_tolerance = max(np.std(data)/3, 8) # if no peak_tolerance is given, the standard deviation is used to guess a good min height
 	else:
-		peak_tolerance = np.std(data) * peak_tolerance
+		peak_tolerance = max(np.std(data) * peak_tolerance, 8)
 	# find activity duration
 	i = 0
 	to_delete = []
-	last_base = data[end_spikes[0]]
+	last_base = end_spikes[0]
+	avg_size = 20
 	max_delta = np.std(data) * 0.75
 	j = 0
 
@@ -130,14 +137,15 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 				j += 1
 				base = data[j]
 
-				if abs(last_base - base) <= max_delta:
+				avg = np.sum(data[last_base-avg_size:last_base+1]) / avg_size
+				if abs(avg - base) <= max_delta or base < 0:
 					add_to_prev = False
 
 		if add_to_prev and spike_location > 0:
 			to_delete.append(spike_location-1)
 
 		else:
-			last_base = data[i]
+			last_base = i
 			if data[spike] - data[i] < peak_tolerance: # check whether the total height of the peak is enough
 				to_delete.append(spike_location)
 			else:
@@ -174,7 +182,7 @@ def test_amplitude():
 def test_timecourse():
 	data = hdf5manager("P2_timecourses.hdf5").load()["brain"]
 
-	specific_is = [0,5,10]
+	specific_is = [0,5,10,200,266]
 
 	for i in specific_is:
 
