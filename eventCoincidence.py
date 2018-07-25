@@ -275,7 +275,6 @@ def getResults(rate_win,
 			  win_t, #vector of time (s) for window
 			  na, #number of events in a
 			  nb, #number of event in b
-			  lookup_table, #rate and p-values to compare against
 			  ratetype = 'precursor', #precursor or trigger
 			  T = 600, #length (s) of vector
 			  tau = 0, #lag coefficeint 
@@ -284,16 +283,53 @@ def getResults(rate_win,
 			  veryVerbose = False):
 	
 	if na == 0 or nb == 0:
-		return np.repeat(np.NaN, win_t.shape[0])
+		return np.ones(win_t.shape[0])
 
 	start_time = time.clock()
+	#expected rate and stdev of the rate
+	if ratetype == 'precursor':
+		rho = 1 - win_t/(T - tau)
+		exp_rate = na*(1 - (rho)**nb)
+		exp_std = np.sqrt(1/na*(1-rho**nb) * rho**nb)
+	if ratetype == 'trigger':
+		rho = 1 - win_t/(T - tau)
+		exp_rate = nb*(1 - (rho)**na)
+		exp_std = np.sqrt(1/nb*(1-rho**na) * rho**na)
+	
+	#quantiles used for graphing
+	if verbose:
+		perc = np.array([1, 2.5, 25, 50, 75, 97.5, 99])/100
+		mark = ['k:', 'k-.', 'k--', 'k-', 'k--','k-.', 'k:']
+		quantile = np.zeros((exp_rate.shape[0], perc.shape[0]))
 
-	results = np.zeros(win_t.shape[0])
+	results = np.zeros(exp_rate.shape[0])
 
-	for i in range(win_t.shape[0]):
-		results[i] = pValForRate(lookup_table, rate_win[i], na, nb, i)
+	for i, r in enumerate(exp_rate):
+		if ratetype == 'precursor':
+			if verbose:
+				quantile[i,:] = poisson.ppf(perc, r)/na
+			results[i] = poisson.cdf(rate_win[i]*na,r)
+		if ratetype == 'trigger':
+			if verbose:
+				quantile[i,:] = poisson.ppf(perc, r)/nb
+			results[i] = poisson.cdf(rate_win[i]*nb,r)
 		if veryVerbose:
 			print(str(win_t[i]) + 'sec(s) time window produces a p value: ' + str(results[i]))
+
+	if verbose:
+		for j, r in enumerate(results):
+			if r < 0.05:
+				print(str(win_t[j]) + 'sec(s) time window produces a significant value: p=' + str(r))
+	
+		for i in range(len(perc)):
+			plt.plot(win_t, quantile[:, i], mark[i], label=perc[i])
+
+		plt.plot(win_t, rate_win)
+		plt.title('Rates per time window')
+		plt.xlabel('Time window (sec)')
+		plt.ylabel('Precursor coincidence rate')
+		plt.legend()
+		plt.show()
 	
 	if veryVerbose:
 		print("Elapsed time: " + str(time.clock() - start_time))

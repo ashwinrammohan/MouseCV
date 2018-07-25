@@ -521,7 +521,7 @@ if __name__ == '__main__':
 		sys.exit()
 
 	if args['lookup']:
-		max_n  = 60
+		max_n  = 100
 		n_interval = 5
 		min_n = n_interval
 		eventMatrix, p_vals = generate_lookup(brain_data, min_n, max_n, n_interval = n_interval)
@@ -531,7 +531,7 @@ if __name__ == '__main__':
 		fullMatrix[0] = 0.5 # for na of 0
 		fullMatrix[:,0] = 0.5 # for nb of 0
 
-		fileString = "Outputs/P2_lookup.hdf5"
+		fileString = "Outputs/P5_lookup.hdf5"
 		fileData = {"table": fullMatrix, "interval": n_interval, "max_n": max_n, "p_values": p_vals}
 		saveData = hdf5manager(fileString)
 		saveData.save(fileData)

@@ -3,7 +3,7 @@ import numpy as np
 from hdf5manager import hdf5manager as h5
 import matplotlib.cm as cm
 
-pMatrix = h5("Outputs/171018_03_MatrixData_full_interp.hdf5").load()['pMatrix']
+pMatrix = h5("Outputs/P5_MatrixData_full_interp.hdf5").load()['pMatrix']
 cv.namedWindow('image')
 
 def callback(x):
@@ -37,7 +37,7 @@ def callback(x):
 
 	# cv.imshow('image', fullImg)
 
-	for i in range(6,0,-1):
+	for i in range(10,0,-1):
 		cmClr = cm.jet(i / 6)
 		clr = np.empty(3)
 
@@ -48,6 +48,7 @@ def callback(x):
 		img[pMatrix[:,:,i] > 1 - cutoff] = clr
 
 	cv.imshow('image', cv.resize(img, (pMatrix.shape[0]*mult, pMatrix.shape[1]*mult), interpolation=cv.INTER_NEAREST))
+	print(np.where(img[:,:,0] > 230)[0].shape[0])
 
 # create trackbars for color change
 cv.createTrackbar('Cutoff','image', 0, 100, callback)

@@ -6,12 +6,12 @@ import wholeBrain as wb
 import cv2 as cv
 import time
 
-f = h5("Outputs/171018_03_MatrixData_full.hdf5")
+f = h5("Outputs/P5_MatrixData_full_interp.hdf5")
 data = f.load()
 eventMatrix = data['eventMatrix']
 pMatrix = data['pMatrix']
 
-f2 = h5("P2_timecourses.hdf5")
+f2 = h5("P5_timecourses.hdf5")
 data2 = f2.load()
 domain_map = data2['domainmap']
 overlapped_domain_map = np.empty((domain_map.shape[1], domain_map.shape[2]), dtype="uint8")
@@ -19,7 +19,7 @@ for i, region in enumerate(domain_map):
 	wr = np.where(region == 1)
 	overlapped_domain_map[wr[0], wr[1]] = i+1
 
-pValue_thresh = 0.1
+pValue_thresh = 0.01
 index = 0
 whole_brain_map = None
 
@@ -27,18 +27,24 @@ def minWindows(fps = 10):
 	windows = np.zeros((eventMatrix.shape[0], eventMatrix.shape[1], 3))
 	for i, results in enumerate(pMatrix):
 		for j, region_pvals in enumerate(results):
-			if (i != j):
-				inds = np.where(region_pvals > 1 - pValue_thresh)
+			if (i != j and not(np.isnan(region_pvals).any())):
+				inds = np.where(region_pvals[1:] > 1 - pValue_thresh)
+
 				if (len(inds[0]) > 0):
 					minWindow = (inds[0][0] + 1) * (1/fps)
-					color = cm.jet(minWindow/2)
-					windows[i][j][0] = color[2] * 255
-					windows[i][j][1] = color[1] * 255
-					windows[i][j][2] = color[0] * 255
+
+					if minWindow < 1:
+						color = cm.jet(min(1, minWindow))
+						windows[i][j][0] = color[2] * 255
+						windows[i][j][1] = color[1] * 255
+						windows[i][j][2] = color[0] * 255
 				else:
 					windows[i][j] = 150
 			else:
-				windows[i][j] = 255
+				if (i == j):
+					windows[i][j] = 255
+				else:
+					windows[i][j] = 0
 
 	fullWindows = np.zeros((eventMatrix.shape[0], eventMatrix.shape[1]+1, 3))
 	fullWindows[:,0] = np.array([0,0,0])
@@ -53,26 +59,13 @@ def nodeVisualization(node_number):
 
 	minWindow = windows[node_number]
 	time_map[...] = minWindow[overlapped_domain_map]
+	print(minWindow.shape[0] - np.where(minWindow[:,0] == 0)[0].shape[0] - np.where(minWindow[:,0] == 150)[0].shape[0])
 
-	# for i, xy_data in enumerate(domain_map):
-	# 	minTime = minWindow[i]
-	# 	onesXY = np.where(overlapped_domain_map == 1)
-	# 	onesX = onesXY[0]
-	# 	onesY = onesXY[1]
-
-	# 	time_map[
+	for x, y, r in zip(centerXs, centerYs, radii):
+		cv.circle(time_map, (y,x), 2, (255,255,255), -1)
 
 def findRegion(x, y):
 	return overlapped_domain_map[y,x]-1
-	# inds = np.where(domain_map[:,y,x] == 1)[0]
-
-	# if (inds.shape[0] > 0):
-	# 	if (inds.shape[0] > 1):
-	# 		print("Found more than one region, returning the last one")
-	# 		print(inds)
-	# 	return inds[-1]
-
-	# return -1
 
 
 def region_click(event, x, y, flags, param):
@@ -111,7 +104,7 @@ def findCenters():
 
 
 def drawNodes(centerXs, centerYs, radii):
-	img = np.zeros((1043, 1027))
+	img = np.zeros((domain_map.shape[1], domain_map.shape[2]))
 	for x, y, r in zip(centerXs, centerYs, radii):
 		cv.circle(img, (y,x), r, (255,255,255), 2)
 		cv.circle(img, (y,x), 3, (255,255,255), -1)
@@ -132,18 +125,18 @@ def findIndex(centerXs, centerYs, radii, mX, mY):
 
 
 cv.namedWindow("Time Map")
-cv.createTrackbar("P-value threshold", "Time Map", 50, 500, callback)
+cv.createTrackbar("P-value threshold", "Time Map", int(pValue_thresh*10000), 500, callback)
 cv.setMouseCallback("Time Map", region_click)
+centerXs, centerYs, radii = findCenters()
 
-time_map = np.zeros((1043,1027,3), dtype="uint8")
+time_map = np.zeros((domain_map.shape[1], domain_map.shape[2], 3), dtype="uint8")
 
 nodeVisualization(1)
 
 cv.imshow("Time Map", time_map)
 whole_brain_map = time_map
 
-centerXs, centerYs, radii = findCenters()
-cv.namedWindow("Node Map")
+#cv.namedWindow("Node Map")
 #drawNodes(centerXs, centerYs, radii)
 
 #cv.setMouseCallback("Node Map", findIndexCallback)
