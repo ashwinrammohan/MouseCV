@@ -107,6 +107,9 @@ def bootstrapData(brain_data):
 	return np_durations, np_intervals
 
 def bootstrapInfo(np_durations, np_intervals, batches, n, max_length):
+	if n // nRange >= len(np_intervals) or n // nRange >= len(np_durations):
+		return np.zeros((batches, n))
+
 	np_durations = np_durations[n // nRange]
 	np_intervals = np_intervals[n // nRange]
 
@@ -134,7 +137,8 @@ def bootstrapInfo(np_durations, np_intervals, batches, n, max_length):
 	a_inds = np.cumsum(joined_array, axis = 1)[:,::2]
 	return np.floor(a_inds)
 
-def generate_lookup(brain_data, n_min, n_max, timecourse_length, n_interval = 25, fps = 10,  max_window = 2, threads = 0, stDev_threshold = 0.8, batches = 10000, percent = 0.05, mid_interval = 100):
+def generate_lookup(brain_data, n_min, n_max, n_interval = 25, fps = 10,  max_window = 2, threads = 0, stDev_threshold = 0.8, batches = 10000, percent = 0.05, mid_interval = 100):
+	timecourse_length = brain_data.shape[1]
 	if threads == 0:
 		wanted_threads = cpu_count()
 	else:
@@ -517,11 +521,10 @@ if __name__ == '__main__':
 		sys.exit()
 
 	if args['lookup']:
-		data = hdf5manager("P2_timecourses.hdf5").load()["brain"]
-		max_n  = 100
+		max_n  = 60
 		n_interval = 5
 		min_n = n_interval
-		eventMatrix, p_vals = generate_lookup(data, min_n, max_n, data.shape[0], n_interval = n_interval)
+		eventMatrix, p_vals = generate_lookup(brain_data, min_n, max_n, n_interval = n_interval)
 		shp = eventMatrix.shape
 		fullMatrix = np.empty((shp[0]+1, shp[1]+1, shp[2], shp[3]), dtype=eventMatrix.dtype)
 		fullMatrix[1:,1:] = eventMatrix
@@ -534,19 +537,6 @@ if __name__ == '__main__':
 		saveData.save(fileData)
 		print("Saved event coincidence data to " + fileString)
 
-	# print(brain_data.shape)
-	#bootstrapInfo
-	'''fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "precursors":preMatrix}
-	fileString = ""
-	if ("expmeta" in data.keys()):
-		fileString = data['expmeta']['name']
-	else:
-		fileString = args['filename'][0].split("_")[0]
-
-	fileString = "Outputs/" + fileString + "_MatrixData_full.hdf5"
-	saveData = hdf5manager(fileString)
-	saveData.save(fileData)
-	print("Saved event coincidence data to Outputs/" + fileString + "_MatrixData_full.hdf5")'''
 
 	if args["graphs"]:
 		eventGraphing(fileString, dataFile = data)

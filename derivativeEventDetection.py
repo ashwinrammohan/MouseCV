@@ -156,7 +156,7 @@ def detectSpikes(data, second_deriv_thresh, second_deriv_batch = 3, deriv_start 
 	for i in to_delete[::-1]:
 		del end_spikes[i]
 		
-	return (np.asarray(start_spikes), np.asarray(end_spikes), data)
+	return (np.asarray(start_spikes, dtype="uint32"), np.asarray(end_spikes, dtype="uint32"), data)
 	
 def test_amplitude():
 	data = loadHDF5("mouse_vectors")
@@ -232,5 +232,5 @@ def test_timecourse():
 		# 	plt.axvline(x = i, color = 'red')
 
 
-test_timecourse()
+#test_timecourse()
 

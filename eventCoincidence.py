@@ -156,7 +156,7 @@ def test_ROI_timecourse(brain_data, lookup_table, fps = 10,  max_window = 2, sta
 	#print(eventMatrix[:,:,7])
 	#print(pMatrix[:,:,7])
 
-	cutoff = 0.05 #1% cutoff for p values
+	cutoff = 0.00001 #1% cutoff for p values
 	preMatrix = np.zeros_like(pMatrix, dtype=bool)
 	preMatrix[pMatrix < cutoff] = True
 	preMatrix[pMatrix > 1 - cutoff] = True
@@ -291,7 +291,7 @@ def getResults(rate_win,
 	results = np.zeros(win_t.shape[0])
 
 	for i in range(win_t.shape[0]):
-		results[i] = pValForRate(lookup_table, rate_win[i], na/2, nb/2, i)
+		results[i] = pValForRate(lookup_table, rate_win[i], na, nb, i)
 		if veryVerbose:
 			print(str(win_t[i]) + 'sec(s) time window produces a p value: ' + str(results[i]))
 	
@@ -301,9 +301,13 @@ def getResults(rate_win,
 	return results
 
 def pValForRate(lookup_table, rate, na, nb, win_t_index):
+	if (na == 0 or nb == 0):
+		print("Zeros,", rate)
+
 	tbl_interval = lookup_table["interval"]
 	data = lookup_table["table"]
 	p_vals = lookup_table["p_values"]
+	sz = data.shape[3] // 2
 
 	na_lower = int(na // tbl_interval)
 	na_upper = min(na_lower + 1, data.shape[0] - 1)
@@ -315,13 +319,19 @@ def pValForRate(lookup_table, rate, na, nb, win_t_index):
 	upper_na_array = data[na_upper, nb_lower, win_t_index]
 	upper_nb_array = data[na_lower, nb_upper, win_t_index]
 
-	p_lower_i = np.searchsorted(lower_array, rate)
+	p_lower_iL = np.searchsorted(lower_array, rate, side='left') - sz
+	p_lower_iR = np.searchsorted(lower_array, rate, side='right') - sz
+	p_lower_i = sz + ( p_lower_iL if abs(p_lower_iL) < abs(p_lower_iR) else p_lower_iR )
 	p_lower = listInterp(lower_array, p_vals, p_lower_i, data.shape[3] - 1, rate)
 
-	p_upper_na_i = np.searchsorted(upper_na_array, rate)
+	p_upper_na_iL = np.searchsorted(upper_na_array, rate, side='left') - sz
+	p_upper_na_iR = np.searchsorted(upper_na_array, rate, side='right') - sz
+	p_upper_na_i = sz + (p_upper_na_iL if abs(p_upper_na_iL) < abs(p_upper_na_iR) else p_upper_na_iR )
 	p_upper_na = listInterp(upper_na_array, p_vals, p_upper_na_i, data.shape[3] - 1, rate)
 
-	p_upper_nb_i = np.searchsorted(upper_nb_array, rate)
+	p_upper_nb_iL = np.searchsorted(upper_nb_array, rate, side='left') - sz
+	p_upper_nb_iR = np.searchsorted(upper_nb_array, rate, side='right') - sz
+	p_upper_nb_i = sz + ( p_upper_nb_iL if abs(p_upper_nb_iL) < abs(p_upper_nb_iR) else p_upper_nb_iR )
 	p_upper_nb = listInterp(upper_nb_array, p_vals, p_upper_nb_i, data.shape[3] - 1, rate)
 
 	p1 = np.empty(3)
@@ -347,6 +357,19 @@ def pValForRate(lookup_table, rate, na, nb, win_t_index):
 
 	# (d - ax - by) / c = z
 	p_val = (d - a*na/tbl_interval - b*nb/tbl_interval) / c
+	# if p_val < 0.0005:
+	# 	print(na, nb, rate, na_lower, nb_lower, win_t_index, p_lower, p_upper_na, p_upper_nb)
+
+	# if p_upper_nb < 0:
+	# 	print("Upper P NB:", p_upper_nb, "Rate:", rate, "NA NB", na, nb, "liA liB", na_lower, nb_lower, "win_t index", win_t_index, "NB index:", p_upper_nb_i)
+
+	# if p_upper_na < 0:
+	# 	print("Upper P NA:", p_upper_na, "Rate:", rate, "NA NB", na, nb, "liA liB", na_lower, nb_lower, "win_t index", win_t_index, "NA index:", p_upper_na_i)
+
+	# if p_lower < 0:
+	# 	print("Lower P:", p_lower, "Rate:", rate, "NA NB", na, nb, "liA liB", na_lower, nb_lower, "win_t index", win_t_index, "N index:", p_lower_i)
+
+
 	return p_val
 
 def linearInterp(x1, x2, y1, y2, x):
