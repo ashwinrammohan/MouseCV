@@ -48,7 +48,7 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 					plt.plot(bin_tcs1, 'bo'), plt.title("Index: " + str(i)), plt.show()
 
 				eventResults[i-rowsLower, j] = event_data
-				pResults[i-rowsLower, j] = getResults(event_data, lookup_table=lookup_table, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
+				pResults[i-rowsLower, j] = getResults(event_data, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
 
 				avg_dt.add_value(time.clock() - dt)
 				dt = time.clock()
@@ -477,12 +477,12 @@ if __name__ == '__main__':
 	ap.add_argument('-i', '--i', type = int, nargs = 1, required = False, help = 'index of specific timecourse')
 	ap.add_argument('-j', '--j', type = int, nargs = 1, required = False, help = 'index of other specific timecourse')
 	ap.add_argument('-g', '--graphs', action = "store_true", required = False, help = 'display graphs after completing')
-	ap.add_argument('-t', '--table', type = str, nargs = 1, required=True, help = 'file location of lookup table for p values')
+	#ap.add_argument('-t', '--table', type = str, nargs = 1, required=True, help = 'file location of lookup table for p values')
 
 	args = vars(ap.parse_args())
 
 	data = hdf5manager(args['filename'][0]).load()
-	table = hdf5manager(args['table'][0]).load()
+	#table = hdf5manager(args['table'][0]).load()
 
 	if "ROI_timecourses" in data.keys():
 		brain_data = data['ROI_timecourses']
@@ -525,6 +525,7 @@ if __name__ == '__main__':
 		plt.plot(event_data)
 		plt.show()
 	else:
+		table = None
 		eventMatrix, pMatrix, preMatrix = test_ROI_timecourse(brain_data, table)
 		fileData = {"eventMatrix": eventMatrix, "pMatrix": pMatrix, "precursors":preMatrix}
 		fileString = ""
@@ -533,7 +534,7 @@ if __name__ == '__main__':
 		else:
 			fileString = args['filename'][0].split("_")[0]
 
-		fileString = "Outputs/" + fileString + "_MatrixData_full_interp.hdf5"
+		fileString = "Outputs/" + fileString + "_MatrixData_full.hdf5"
 		saveData = hdf5manager(fileString)
 		saveData.save(fileData)
 		print("Saved event coincidence data to " + fileString)
