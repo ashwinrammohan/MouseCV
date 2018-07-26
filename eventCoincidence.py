@@ -9,8 +9,21 @@ from multiprocessing import Process, Array, cpu_count, Manager
 import ctypes as c
 import cv2 as cv
 
-def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix, pMatrix, brain_data, fps, dispDict, name, lookup_table, graph = False):
+'''
+This is the function that runs on each thread. It runs eventCoin on its section of the data, 
+keeps track of the results, and keeps track of various pieces of diagnostic information.
+rowsLower and rowsUpper define the lower and upper bounds of where this function should analyze the data.
+binarized_data is the data as a matrix, where the first dimension is the timecourse index, and the 
+second dimension is the frame number. win_t is a matrix with the time windows that should be analyzed.
+eventMatrix and pMatrix are special objects which allow this process to modify data that also exists in the main process. 
+eventMatrix stores the coincidence rates, and pMatrix stores the p values.brain_data_shape is the shape of the brain data. 
+fps is the frames per second of the data. dispDict is another special object which can be shared between
+processes, and is where diagnostic information goes. name is the name of this process, for diagnostic purposes. 
+
+'''
+def _eventCoin(rowsLower, rowsUpper, binarized_data, win_t, eventMatrix, pMatrix, brain_data_shape, fps, dispDict, name):
 	print("New thread created, running from " + str(rowsLower) + " to " + str(rowsUpper))
+	numRows = brain_data_shape[0]
 	avg_na = FixedQueue(20)
 	avg_nb = FixedQueue(20)
 	total_time = time.clock()
@@ -21,13 +34,13 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 	dispDict["needed_"+name] = needed
 	disp_time = 0
 
-	eventResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0]))
-	pResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0]))
+	eventResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0])) # these matrices are made to hold values while the code is running
+	pResults = np.empty((rowsUpper - rowsLower, numRows, win_t.shape[0])) # it creates a buffer which can pasted into eventMatrix and pMatrix once finished
 
 	for i in range(rowsLower, rowsUpper):
 		for j in range(numRows):
 			
-			if time.clock() - disp_time >= 1:
+			if time.clock() - disp_time >= 1: # updates diagnostic information every second
 				dispDict["i_"+name] = i
 				dispDict["j_"+name] = j
 				dispDict["avg_na_"+name] = avg_na.sum/20
@@ -39,30 +52,32 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 
 			processed += 1
 
-			if (i != j):
+			if (i != j): # check that this data isn't being compared to itself
 				bin_tcs1 = binarized_data[i]
 				bin_tcs2 = binarized_data[j]
+				# get coincidence rates for each time window
 				event_data, na, nb = eventCoin(bin_tcs1,bin_tcs2, win_t=win_t, ratetype='precursor', verbose = False, veryVerbose = False)
 
-				if graph:
-					plt.plot(bin_tcs1, 'bo'), plt.title("Index: " + str(i)), plt.show()
+				eventResults[i-rowsLower, j] = event_data # store rate
+				# get p values for each time window
+				pResults[i-rowsLower, j] = getResults(event_data, win_t=win_t, na=na, nb=nb, T = brain_data_shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
 
-				eventResults[i-rowsLower, j] = event_data
-				pResults[i-rowsLower, j] = getResults(event_data, win_t=win_t, na=na, nb=nb, T = brain_data.shape[1]/fps, fps = fps, verbose = False, veryVerbose = False)
-
+				# diagnostic info
 				avg_dt.add_value(time.clock() - dt)
 				dt = time.clock()
 				avg_na.add_value(na)
 				avg_nb.add_value(nb)
-			else:
+			else: # if the data is being compared to itself, just return NaNs
 				eventResults[i-rowsLower, j] = np.NaN
 				pResults[i-rowsLower, j] = np.NaN
 
-	eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
+	eventNp = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0])) # extract numpy matrix from special objects
 	pNp = np.frombuffer(pMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))
 
-	eventNp[rowsLower:rowsUpper] = eventResults
+	eventNp[rowsLower:rowsUpper] = eventResults # put data in
 	pNp[rowsLower:rowsUpper] = pResults
+
+	# finish diagnostic info
 	dispDict["done"] += 1
 	dispDict["i_"+name] = i
 	dispDict["j_"+name] = j
@@ -70,7 +85,13 @@ def _eventCoin(rowsLower, rowsUpper, numRows, binarized_data, win_t, eventMatrix
 	dispDict["processed_"+name] = processed
 
 
-def test_ROI_timecourse(brain_data, lookup_table, fps = 10,  max_window = 2, start_event = True, end_event = False, threads = 0, stDev_threshold = 0.8):
+'''
+This method takes brain data, and returns an eventMatrix, pMatrix, and preMatrix
+The eventMatrix has coincidence rates for each component to each other.
+The pMatrix has p values for each component to each other.
+The preMatrix has True or False to indicate if each component is another's precursor
+'''
+def test_ROI_timecourse(brain_data, fps = 10,  max_window = 2, start_event = True, end_event = False, threads = 0, stDev_threshold = 0.8):
 	binarized_data = np.zeros_like(brain_data).astype('uint8')
 	numRows = brain_data.shape[0]
 	start_spike_set = []
@@ -79,20 +100,21 @@ def test_ROI_timecourse(brain_data, lookup_table, fps = 10,  max_window = 2, sta
 
 	print("Finding events...")
 
+	# First, brain data is binarized using event detection
 	for i, dataRow in enumerate(brain_data):
 		binarizedRow = np.zeros_like(dataRow)
 
 		start_time = time.clock()
-		start_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3, peak_tolerance = 0.5)
+		start_spikes, end_spikes, vals = detectSpikes(dataRow, -0.3, peak_tolerance = 0.5) # check derivateEventDetection.py for more info on this
 		print("Spikes at", i, "found in", (time.clock() - start_time), "seconds")
 		if start_event:
 			binarizedRow[start_spikes] = 1
 		if end_event:
 			binarizedRow[end_spikes] = 1
 
-		binarized_data[i,:] = binarizedRow
+		binarized_data[i,:] = binarizedRow # binarized data put into main matrix
 
-	if threads == 0:
+	if threads == 0: # if the user didn't specify the number of threads, use what is likely the best number
 		wanted_threads = cpu_count()
 	else:
 		wanted_threads = threads
@@ -101,26 +123,30 @@ def test_ROI_timecourse(brain_data, lookup_table, fps = 10,  max_window = 2, sta
 	threads = []
 	print("Creating " + str(wanted_threads) + " threads...")
 
-	eventMatrix = Array(c.c_double, numRows*numRows*win_t.shape[0])
+	eventMatrix = Array(c.c_double, numRows*numRows*win_t.shape[0]) # create inter-process variables
 	pMatrix = Array(c.c_double, numRows*numRows*win_t.shape[0]) 
 	displayDict = Manager().dict()
 	displayDict["done"] = 0
+
+	# the index map is used to distribute the brain data among the processes such that no process does much more work than any other
+	# in this case, the data is already roughly sorted by processing time (was sorted like this from ICA analysis), so
+	# a good index map is one which gives process 0 index 0, process 1 index 1, process 2 index 2, etc. 
 	index_map = []
 	for i in range(wanted_threads):
 		index_map.extend(list(np.arange(i,brain_data.shape[0],wanted_threads)))
 
 	index_map = np.asarray(index_map)
-	inv_index_map = np.argsort(index_map)
+	inv_index_map = np.argsort(index_map) # the inverse index map will be used to unscramble the data
 	print("Created empty data arrays")
 
-	dataPer = int(numRows / wanted_threads)
+	dataPer = int(numRows / wanted_threads) # number of rows of data per thread
 	upper = 0
 	names = []
-	for i in range(wanted_threads):
+	for i in range(wanted_threads): # create all threads
 		name = "Thread " + str(i+1)
 		names.append(name)
 
-		displayDict["i_"+name] = 0
+		displayDict["i_"+name] = 0 # initialize diagnostic display dictionary
 		displayDict["j_"+name] = 0
 		displayDict["avg_na_"+name] = 0
 		displayDict["avg_nb_"+name] = 0
@@ -129,40 +155,38 @@ def test_ROI_timecourse(brain_data, lookup_table, fps = 10,  max_window = 2, sta
 		displayDict["processed_"+name] = 0
 		displayDict["needed_"+name] = 1
 
-		if i == wanted_threads-1:
-			p = Process(target=_eventCoin, args=(upper, numRows, numRows, binarized_data[index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name, lookup_table))
-		else:
+		if i == wanted_threads-1: # for the last thread, give it any leftover rows of data, for example 23 rows, 5 threads, this process will do #17-23
+			p = Process(target=_eventCoin, args=(upper, numRows, binarized_data[index_map], win_t, eventMatrix, pMatrix, brain_data.shape, fps, displayDict, name))
+		else: # otherwise just divide up the rows into each process normally
 			lower = i*dataPer
 			upper = (i+1)*dataPer
-			p = Process(target=_eventCoin, args=(lower, upper, numRows, binarized_data[index_map], win_t, eventMatrix, pMatrix, brain_data, fps, displayDict, name, lookup_table))
+			p = Process(target=_eventCoin, args=(lower, upper, binarized_data[index_map], win_t, eventMatrix, pMatrix, brain_data.shape, fps, displayDict, name))
 		p.start()
 		threads.append(p)
 
-	_displayInfo(displayDict, wanted_threads, names)
-	print("All threads done")
+	_displayInfo(displayDict, wanted_threads, names) # run the diagnostic windows on the main thread
 
-	# for p in threads:
-	# 	p.join()
+	for p in threads: # insure that all threads have finished
+	 	p.join()
 
+	 print("All threads done")
+
+	# get matrices from objects, reshape then unscramble it
 	eventMatrix = np.frombuffer(eventMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))[inv_index_map][:,inv_index_map]
 	pMatrix = np.frombuffer(pMatrix.get_obj()).reshape((numRows, numRows, win_t.shape[0]))[inv_index_map][:,inv_index_map]
 
-	#print(eventMatrix[:,:,9].shape)
-
-	#plt.imshow("10th time window", eventMatrix[:,:,9])
-	#plt.colorbar()
-	#plt.show()
-
-	#print(eventMatrix[:,:,7])
-	#print(pMatrix[:,:,7])
-
-	cutoff = 0.00001 #1% cutoff for p values
+	# create preMatrix using p-values
+	cutoff = 0.00001
 	preMatrix = np.zeros_like(pMatrix, dtype=bool)
 	preMatrix[pMatrix < cutoff] = True
 	preMatrix[pMatrix > 1 - cutoff] = True
 
 	return eventMatrix, pMatrix, preMatrix
 
+'''
+Compares 2 binary sequences of data to see the percent of time an event in A happens 
+before an event in B, within some time window.
+'''
 def eventCoin(a, b, #two binary signals to compare
 			  win_t, #vector of time (s) for window
 			  na = None, nb = None, #number of total events in each comparitive vector
@@ -195,7 +219,6 @@ def eventCoin(a, b, #two binary signals to compare
 	for i,inda in enumerate(a_ind): # rows
 		ind_diff[i] = inda - (tau*fps) - b_ind
 
-	#replace all neg values with 0	
 	if veryVerbose:
 		print('Size of difference array: ', ind_diff.shape)
 		plt.imshow(ind_diff)
@@ -210,28 +233,26 @@ def eventCoin(a, b, #two binary signals to compare
 
 	#create event matrix
 	if ratetype == 'precursor':
-		#print('Calculating PRECURSOR coincidence \n ----------------------------------')
 
 		start_time = time.clock()
 		events = np.zeros((ind_diff.shape[0], len(win_fr)))
-		ind_diff[ind_diff <= 0] = max(win_fr)+1
+		ind_diff[ind_diff <= 0] = max(win_fr)+1 # put any values zero or less to a very large number so that they aren't picked up as coinciding
 		results = np.zeros_like(ind_diff)
 
 		for i, win in enumerate(win_fr):
 			if verbose:
 				print('Calculating PRECURSOR coincidence rate for window ' + str(win/fps) +'sec(s)')
 
-			results[ind_diff < win] = 1
-			row_sum = np.heaviside(np.sum(results, axis=1), 0)
-			events[:,i] = row_sum
+			results[ind_diff < win] = 1 # set results to 1 whenever there's a coincidence
+			row_sum = np.heaviside(np.sum(results, axis=1), 0) # if index in A ever coincided with an index B, return 1, otherwise 0
+			events[:,i] = row_sum # put the result into the result matrix
 
-		rate_win = np.sum(events, axis=0)/na
+		rate_win = np.sum(events, axis=0)/na # calculate the rate using coincidences
 
 		if verbose:
 			print("Took " + str(time.clock() - start_time) + " seconds.")
 
 	if ratetype == 'trigger':
-		#print('Calculating TRIGGER coincidence \n ----------------------------------')
 		
 		start_time = time.clock()
 		events = np.zeros((ind_diff.shape[1], len(win_fr)))
@@ -271,6 +292,9 @@ def eventCoin(a, b, #two binary signals to compare
 		print("Took " + str(time.clock() - overall_time) + " seconds total.")
 	return rate_win, na, nb
 
+'''
+Compares a given rate to similar random data to see if the rate is significant, or simpy due to random chance
+'''
 def getResults(rate_win,              
 			  win_t, #vector of time (s) for window
 			  na, #number of events in a
@@ -304,6 +328,7 @@ def getResults(rate_win,
 
 	results = np.zeros(exp_rate.shape[0])
 
+	# for the rate of each time window, use a poisson distribution to see if the data is relevant 
 	for i, r in enumerate(exp_rate):
 		if ratetype == 'precursor':
 			if verbose:
@@ -336,6 +361,9 @@ def getResults(rate_win,
 
 	return results
 
+'''
+This method is no longer used. It takes a lookup table and interpolates to find the p-value for a given rate.
+'''
 def pValForRate(lookup_table, rate, na, nb, win_t_index):
 	if (na == 0 or nb == 0):
 		print("Zeros,", rate)
@@ -393,18 +421,6 @@ def pValForRate(lookup_table, rate, na, nb, win_t_index):
 
 	# (d - ax - by) / c = z
 	p_val = (d - a*na/tbl_interval - b*nb/tbl_interval) / c
-	# if p_val < 0.0005:
-	# 	print(na, nb, rate, na_lower, nb_lower, win_t_index, p_lower, p_upper_na, p_upper_nb)
-
-	# if p_upper_nb < 0:
-	# 	print("Upper P NB:", p_upper_nb, "Rate:", rate, "NA NB", na, nb, "liA liB", na_lower, nb_lower, "win_t index", win_t_index, "NB index:", p_upper_nb_i)
-
-	# if p_upper_na < 0:
-	# 	print("Upper P NA:", p_upper_na, "Rate:", rate, "NA NB", na, nb, "liA liB", na_lower, nb_lower, "win_t index", win_t_index, "NA index:", p_upper_na_i)
-
-	# if p_lower < 0:
-	# 	print("Lower P:", p_lower, "Rate:", rate, "NA NB", na, nb, "liA liB", na_lower, nb_lower, "win_t index", win_t_index, "N index:", p_lower_i)
-
 
 	return p_val
 
@@ -432,7 +448,7 @@ def listInterp(xList, yList, lowerIndex, max_index, value):
 
 	return linearInterp(xStart, xEnd, yStart, yEnd, value)
 
-
+# Show all windows with diagnostic info
 def _displayInfo(displayDict, wanted_threads, names):
 	print("------ DISPLAYING INFO ------")
 	positions = [(0, 0), (500, 0), (1000, 0), (0, 500), (500, 500), (1000, 500), (0, 1000), (500, 1000)]
@@ -448,6 +464,7 @@ def _displayInfo(displayDict, wanted_threads, names):
 		movewindows = False
 	cv.destroyAllWindows()
 
+# Code for 1 diagnostic window
 def visualizeProgress(window_name, i, j, avg_na, avg_nb, time_elapsed, avg_dt, processed, needed, pos):
 	img = np.zeros((415, 460))
 	cv.putText(img, "i:"+str(i), (25, 50), cv.FONT_HERSHEY_SIMPLEX, 1, 1)
@@ -495,7 +512,7 @@ if __name__ == '__main__':
 
 	print(brain_data.shape)
 
-	if args['i'] is not None:
+	if args['i'] is not None: # this option allows the user to find coincidence for a specific component against another specific component
 		data_i = args['i'][0]
 		data_j = args['j'][0]
 
