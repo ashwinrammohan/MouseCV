@@ -4,6 +4,7 @@
 *.avi
 path.txt
 *.hdf5
+*.tiff
 
 # gitignore from interwebs
 # Byte-compiled / optimized / DLL files

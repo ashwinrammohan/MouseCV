@@ -1,36 +1,85 @@
 import numpy as np
 import cv2 as cv
+import sys
+from tifffile import TiffFile
+
+try:
+	path_file = open("path.txt", "r")
+	sys.path.append(path_file.read())
+	path_file.close()
+except:
+	print("Can't import, path.txt doesn't exist")
+	pass
+
 import wholeBrain as wb
+import fileManager as fm
+
 import matplotlib.pyplot as plt
 import math
 from hdf5manager import hdf5manager
 import os
 
-def load_mp4(vid_name):
-	cap = cv.VideoCapture("Assets/" + vid_name + ".mp4")
-	frameCount = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
-	frameWidth = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
-	frameHeight = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+vid_name = "180720_05_under"
 
-	vid = np.empty((frameCount, frameHeight, frameWidth), np.dtype('uint8'))
+codec = None
+fps = 30
+output = "Outputs/" + vid_name + "_shape.avi"
+if codec is None:
+	if output.endswith('.mp4'):
+		if os.name is 'posix':
+			codec = 'X264'
+		elif os.name is 'nt':
+			# codec = 'H264'
+			codec = 'XVID'
+	else:
+		if os.name is 'posix':
+			codec = 'MP4V'
+		elif os.name is 'nt':
+			codec = 'XVID'
+		else:
+			assert os.name is 'nt', 'Unknown os type: {0}'.format(os.name)	
 
-	fc = 0
-	ret = True
+fourcc = cv.VideoWriter_fourcc('M','J','P','G') 
+x1 = 0
+x2 = 100
+x3 = 100
+x4 = 100
 
-	while (True):
-		result = cap.read()
-		if not(result[0]):
-			break
+directory = "Assets"
+videofiles = fm.findFiles(directory, '(\d{6}_\d{2})\D+([@-](\d{4}))?\.tiff?', regex=True)
+experiments = fm.movieSorter(videofiles)
+print(experiments)
+experimentName = "180713_12"
 
-		vid[fc] = result[1][:,:,0]
-		fc += 1
+def toNumpy(tiffObject):
+	pages = 0
+	for frame in tiffObject:
+		pages += 1
 
-	cap.release()
-	return vid
+	ar = np.empty((pages,) + tiffObject[0].shape, dtype="uint8")
+	for i, frame in enumerate(tiffObject):
+		ar[i] = frame.asarray()
 
-vid_name = "180713_12_under"
-mouse_vid = load_mp4(vid_name)
-print("Loaded mp4")
+	return ar
+
+pathlist = []
+for expname in sorted(experiments):
+	if experimentName is not None:
+		if expname != experimentName:
+			print(expname, 'does not match experiment key:', 
+				experimentName +'.  skipping..')
+			continue
+		else:
+			print('found match:', expname)
+	# Make output filenames based on name
+	pathlist.extend(experiments[expname])
+	mouse_vid = toNumpy(TiffFile(pathlist[0]).pages)
+	mouse_vid_shape = mouse_vid.shape
+	print("Found experiment!!")
+
+resize_factor = 1
+
+print("Loaded movie part 1")
 hdf5FilePath = "mouse_vectors.hdf5"
 hdf5File = hdf5manager(hdf5FilePath)
 mouse_frame = mouse_vid[300]
@@ -48,36 +97,44 @@ stage = 0
 verbose = True
 
 def track_limbs():
-	for limbKey in clicks.keys():
-		if selected[limbKey]:
-			area_track(darkest[limbKey], lightest[limbKey], pos[limbKey][0], pos[limbKey][1], limbKey)
+	global mouse_vid
 
 	try:
 		os.remove(hdf5FilePath)
 	except FileNotFoundError:
 		print("Creating new file with name: " + hdf5FilePath)
 
+	for path in pathlist:
+		with TiffFile(path) as tif:
+			mouse_vid = toNumpy(tif.pages)
+			mouse_vid = mouse_vid[:,x1:x2,y1:y2, 0].copy()
+
+			for limbKey in clicks.keys():
+				if selected[limbKey]:
+					print("Starting vid processing of limb", limbKey)
+					area_track(darkest[limbKey], lightest[limbKey], pos[limbKey][0], pos[limbKey][1], limbKey)
+
+			if resize_factor != 1:
+				print("Resizing, factor = " + str(resize_factor))
+				width = int(mouse_vid_shape[2] // resize_factor)
+				height = int(mouse_vid_shape[1] // resize_factor)
+				print("Old size: (" + str(mouse_vid_shape[2]) + ", " + str(mouse_vid_shape[1]) + ")")
+				print("New size: " + str((width, height)))
+
+				for i, frame in enumerate(mouse_vid):
+					print("Writing frame", i)
+					writeFrame(cv.resize(frame, (width, height), interpolation = cv.INTER_AREA), out)
+
+			else:
+				i = 0
+				for frame in mouse_vid:
+					print("Writing frame", i)
+					i += 1
+					writeFrame(frame, out)
+
 	hdf5File.save(hdf5Dict)
-	print("Done! Saving video...")
-
-	resize_factor = 1
-	if resize_factor != 1:
-		print("Resizing, factor = " + str(resize_factor))
-		width = int(mouse_vid.shape[2] * resize_factor)
-		height = int(mouse_vid.shape[1] * resize_factor)
-		print("Old size: (" + str(mouse_vid.shape[2]) + ", " + str(mouse_vid.shape[1]) + ")")
-		print("New size: " + str((width, height)))
-
-		sized_vid = np.zeros((mouse_vid.shape[0], height, width), dtype="uint8")
-		for i, frame in enumerate(mouse_vid):
-			sized_vid[i] = cv.resize(frame, (width, height), interpolation = cv.INTER_AREA)
-
-		wb.saveFile("Assets/" + vid_name + "Contours.avi", sized_vid, fps = 30)
-	else:
-		wb.saveFile("Assets/" + vid_name + "Contours.avi", mouse_vid, fps = 30)
-
-	print("Playing movie...")
-	wb.playMovie(mouse_vid, cmap=cv.COLORMAP_BONE) 
+	out.release()
+	print("Done!")
 
 def area_track(darkest, lightest, x, y, limb_label):
 	retval, result = cv.threshold(mouse_frame, 255, 255, cv.THRESH_TOZERO_INV);#lightest+20, 255, cv.THRESH_TOZERO_INV);
@@ -142,17 +199,17 @@ def area_track(darkest, lightest, x, y, limb_label):
 
 			bounding_rect = cv.minAreaRect(contour)
 			cont_width = min(bounding_rect[1][0], bounding_rect[1][1])
-			if dist < closest_dist:
-			#if abs(cont_area - area) < abs(closest_area - area) and (cont_width - bounding_width) / bounding_width < width_tolerance and dist < position_threshold:
+			#if dist < closest_dist:
+			if abs(cont_area - area) < abs(closest_area - area) and dist < position_threshold: #(cont_width - bounding_width) / bounding_width < width_tolerance and
 				closest_index = i
 				closest_area = cont_area
 				closest_width = cont_width
 				closest_dist = dist
 				close_pos = (tail_x, tail_y)
 		
-		#percent = abs(closest_area - area) / area
-		if closest_dist > position_threshold:
-		#if percent > area_tolerance:
+		percent = abs(closest_area - area) / area
+		#if closest_dist > position_threshold:
+		if percent > area_tolerance:
 			motion = (closest_pos[0] - curr_centroid[0], closest_pos[1] - curr_centroid[1])
 
 			limb["x"].append(last_pos[0])
@@ -183,6 +240,7 @@ def area_track(darkest, lightest, x, y, limb_label):
 				print("Found contour!")
 				area = closest_area
 				bounding_width = closest_width
+
 			cv.drawContours(frame, contours, closest_index, (0,0,0), 2)
 		
 		curr_centroid = closest_pos
@@ -192,9 +250,32 @@ def area_track(darkest, lightest, x, y, limb_label):
 			j += 1
 			print("Closest contour found at index " + str(closest_index) + ". Area = " + str(area) + ", Width = " + str(bounding_width))
 
+
+def writeFrame(frame, out, cmap = None, fmin = 0, fmax = 255):
+		
+	# rescale and convert to uint8
+	fslope = 255 / fmax
+	frame = frame - fmin
+	frame = frame * fslope
+
+	# cap min and max to prevent incorrect cmap application
+	frame[frame > 255] = 255
+	frame[frame < 0] = 0
+
+	frame = frame.astype('uint8')
+
+	# apply colormap, write frame to .avi
+	if cmap is not None: 
+		frame = cv.applyColorMap(frame.astype('uint8'), cmap)
+	elif (len(frame.shape) == 2):
+		frame = np.repeat(frame[:,:,None], 3, axis=2)
+
+	out.write(frame)
+
 	
+out = None
 def limb_click(event,x,y,flags,param):
-	global currentLabel, stage, crop_area, mouse_vid, mouse_frame
+	global currentLabel, stage, crop_area, mouse_vid, mouse_frame, x1, x2, y1, y2, out, mouse_vid_shape
 
 	if event == cv.EVENT_MOUSEMOVE and stage == 1:
 		new_frame = np.copy(mouse_vid[300])
@@ -211,15 +292,18 @@ def limb_click(event,x,y,flags,param):
 			crop_area = crop_area[:2] + (x, y)
 			stage += 1
 
-			x1 = crop_area[0]
-			y1 = crop_area[1]
-			x2 = crop_area[2]
-			y2 = crop_area[3]
-			new_vid = np.zeros((mouse_vid.shape[0], y2 - y1, x2 - x1), dtype="uint8")
-			for i in range(len(mouse_vid)):
-				new_vid[i] = mouse_vid[i][y1:y2, x1:x2]
+			x1 = crop_area[1]
+			y1 = crop_area[0]
+			x2 = crop_area[3]
+			y2 = crop_area[2]
+			mouse_vid = mouse_vid[:,x1:x2,y1:y2, 0].copy()
+			mouse_vid_shape = mouse_vid.shape
 
-			mouse_vid = new_vid
+			w = int(mouse_vid_shape[1] // resize_factor)
+			h = int(mouse_vid_shape[2] // resize_factor)
+			print(w,h)
+			out = cv.VideoWriter(output, fourcc, fps, (h,w), isColor=True)
+
 			mouse_frame = mouse_vid[300]
 			cv.imshow("Original", mouse_frame)
 			cv.waitKey(10)
