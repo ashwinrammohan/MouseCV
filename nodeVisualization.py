@@ -245,21 +245,31 @@ for circles that encompass each domain.
 '''
 
 def findCentersAndRadii():
-	centerXs = np.zeros(domain_map.shape[0], dtype = "uint32")
-	centerYs = np.zeros(domain_map.shape[0], dtype = "uint32")
-	radii = np.zeros(domain_map.shape[0], dtype = "uint32")
+	centerXs = []
+	centerYs = []
+	radii = []
 
 	for i in range(domain_map.shape[0]):
-		res = np.where(overlapped_domain_map == i+1)
-		if (len(res[0]) >= 1):
-			centerXs[i] = np.mean(res[0])
-			centerYs[i] = np.mean(res[1])
+		img = np.zeros_like(overlapped_domain_map, dtype="uint8")
+		img[overlapped_domain_map == i+1] = 255
 
-			xDists = np.square(res[0] - centerXs[i])
-			yDists = np.square(res[1] - centerYs[i])
-			radii[i] = np.mean(np.sqrt(xDists + yDists))
+		#blah is there cause there's apparently supposed to be 3 outputs
+		blah, contours, hierarchy = cv.findContours(img, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
 
-	return centerXs, centerYs, radii
+		for i, contour in enumerate(contours):
+			contourImage = np.zeros_like(img)
+			cont_area = cv.contourArea(contour)
+			if (cont_area > 100):
+				cv.drawContours(contourImage, contours, i, (255,255,255), 1)
+				indices = np.where(contourImage == 255)
+				xs = indices[0]
+				ys = indices[1]
+				centerXs.append(np.mean(xs))
+				centerYs.append(np.mean(ys))
+
+	centerXs = np.asarray(centerXs, dtype="uint32")
+	centerYs = np.asarray(centerYs, dtype="uint32")
+	return centerXs, centerYs, np.zeros_like(centerXs)
 
 '''
 This method draws the circles around each domain using the coordinates
@@ -267,9 +277,9 @@ for the circles and the radii from the previous method.
 '''
 
 def drawNodes(centerXs, centerYs, radii):
-	img = np.zeros((domain_map.shape[1], domain_map.shape[2]))
+	img = overlapped_domain_map.copy() #np.zeros((domain_map.shape[1], domain_map.shape[2]))
 	for x, y, r in zip(centerXs, centerYs, radii):
-		cv.circle(img, (y,x), r, (255,255,255), 2)
+		#cv.circle(img, (y,x), r, (255,255,255), 2)
 		cv.circle(img, (y,x), 3, (255,255,255), -1)
 
 	cv.imshow("Node Map", img)
@@ -291,6 +301,7 @@ cv.namedWindow("Time Map " + title)
 cv.createTrackbar("P-value threshold", "Time Map " + title, int(pValue_thresh*ratio), 500, callback)
 cv.setMouseCallback("Time Map " + title, region_click)
 centerXs, centerYs, radii = findCentersAndRadii()
+drawNodes(centerXs, centerYs, radii)
 
 time_map = np.zeros((domain_map.shape[1], domain_map.shape[2], 3), dtype="uint8")
 
