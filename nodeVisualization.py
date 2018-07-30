@@ -36,6 +36,10 @@ if __name__ == '__main__':
 	f = h5(args['coincidence_filename'][0])
 	data = f.load()
 	eventMatrix = data['eventMatrix']
+
+	maxRates = np.ones(eventMatrix.shape[0])
+	minRates = np.zeros(eventMatrix.shape[0])
+
 	pMatrix = data['pMatrix']
 
 	f2 = h5(args['data_filename'][0])
@@ -47,10 +51,12 @@ if __name__ == '__main__':
 
 title = "Trigger" if trigger else "Precursor"
 
-overlapped_domain_map = np.empty((domain_map.shape[1], domain_map.shape[2]), dtype="uint8")
+overlapped_domain_map = np.zeros((domain_map.shape[1], domain_map.shape[2]), dtype="uint32")
 for i, region in enumerate(domain_map):
 	wr = np.where(region == 1)
 	overlapped_domain_map[wr[0], wr[1]] = i+1
+
+return overlapped_domain_map
 
 '''
 Calculates and returns the min window matrix, which contains the first time window at which event coincidence is
@@ -58,10 +64,6 @@ Calculates and returns the min window matrix, which contains the first time wind
 pMatrix from the hdf5 coincidence file...the windows at which the p value is greater than some threshold (defined by the
 global variable 'pValue_thresh') are the "significant" windows, and the first of these windows is the min window.
 '''
-
-maxRates = np.ones(eventMatrix.shape[0])
-minRates = np.zeros(eventMatrix.shape[0])
-
 def minWindows(fps = 10):
 	global windows
 
@@ -240,10 +242,95 @@ def callback(x):
 	cv.imshow("Time Map " + title, time_map)
 
 '''
+Interpolate along an axis such that there is an x,y pair for
+every integer value in that axis' range. A False flag indicates 
+every x value, a False indicates every y value.
+'''
+def interpAxis(contour, interp_x):
+	contour = contour[:,0]
+
+	if interp_x:
+		xs = contour[:,0]
+		ys = contour[:,1]
+	else:
+		xs = contour[:,1]
+		ys = contour[:,0]
+
+	xs_interp = xs.tolist()
+	ys_interp = ys.tolist()
+
+	sz = xs.shape[0]
+	i = 1
+	while i < sz:
+		dif = xs_interp[i] - xs_interp[i-1]
+		new_x = 0
+
+		if dif < -1:
+			new_x = xs_interp[i-1] - 1
+		elif dif > 1:
+			new_x = xs_interp[i-1] + 1
+		else:
+			i += 1
+			continue
+
+		t_n = (new_x - xs_interp[i-1]) / dif
+		new_y = (ys_interp[i] - ys_interp[i-1]) * t_n + ys_interp[i-1]
+
+		xs_interp.insert(i, new_x)
+		ys_interp.insert(i, new_y)
+
+		sz += 1
+		i += 1
+
+	if interp_x:
+		xs_interp = np.asarray(xs_interp, dtype="int32")
+		ys_interp = np.asarray(ys_interp, dtype="int32")
+	else:
+		xs_interp_temp = np.asarray(ys_interp, dtype="int32")
+		ys_interp = np.asarray(xs_interp, dtype="int32")
+		xs_interp = xs_interp_temp
+
+	return xs_interp, ys_interp
+
+'''
+Find the center of a contour using its maximum distance across when 
+looked at both horizontally and vertically.
+'''
+def centerOnContour(contour):
+	xs, ys = interpAxis(contour, True)
+	order = np.argsort(xs)
+	xs = xs[order]
+	ys = ys[order]
+
+	dif_x = xs[1:] - xs[:-1]
+	dif_y = ys[1:] - ys[:-1]
+	dif_y[dif_x > 0] = 0
+	dif_y = np.abs(dif_y)
+
+	maxX = xs[np.argmax(dif_y)]
+	maxYs = ys[xs == maxX]
+	maxY = np.max(maxYs)
+	minY = np.min(maxYs)
+
+	xs, ys = interpAxis(contour, False)
+	xs = xs[(ys >= minY) * (ys <= maxY)]
+	ys = ys[(ys >= minY) * (ys <= maxY)]
+	order = np.argsort(ys)
+	xs = xs[order]
+	ys = ys[order]
+
+	dif_x = xs[1:] - xs[:-1]
+	dif_y = ys[1:] - ys[:-1]
+	dif_x[dif_y > 0] = 0
+	dif_x = np.abs(dif_x)
+	maxY = ys[np.argmax(dif_x)]
+
+	return maxX, maxY
+
+'''
 This method finds the centers for each of the domains on the domain_map and the average radii
 for circles that encompass each domain. 
 '''
-
 def findCentersAndRadii():
 	centerXs = []
 	centerYs = []
@@ -261,11 +348,9 @@ def findCentersAndRadii():
 			cont_area = cv.contourArea(contour)
 			if (cont_area > 100):
 				cv.drawContours(contourImage, contours, i, (255,255,255), 1)
-				indices = np.where(contourImage == 255)
-				xs = indices[0]
-				ys = indices[1]
-				centerXs.append(np.mean(xs))
-				centerYs.append(np.mean(ys))
+				x, y = centerOnContour(contour)
+				centerXs.append(x)
+				centerYs.append(y)
 
 	centerXs = np.asarray(centerXs, dtype="uint32")
 	centerYs = np.asarray(centerYs, dtype="uint32")
