@@ -41,9 +41,10 @@ def toNumpy(tiffObject):
 	for frame in tiffObject:
 		pages += 1
 
-	ar = np.empty((pages,) + tiffObject[0].shape, dtype="uint8")
+	obj_shape = (tiffObject[0].shape[0], tiffObject[0].shape[1])
+	ar = np.empty((pages,) + obj_shape, dtype="uint8")
 	for i, frame in enumerate(tiffObject):
-		ar[i] = frame.asarray()
+		ar[i] = frame.asarray()[:,:,0]
 
 	return ar
 
@@ -94,7 +95,24 @@ print("Thresholding")
 stds = np.std(dif_vid, axis=(1,2))
 avgs = np.mean(dif_vid, axis=(1,2))
 
-print("Finding gravities")
+print("Finding gravities...")
+
+print("Making inverse square array")
+inv_square = np.empty((dif_vid.shape[1]*2-1, dif_vid.shape[2]*2-1))
+center_x = dif_vid.shape[1]-1
+center_y = dif_vid.shape[2]-1
+
+for x in range(inv_square.shape[0]):
+	for y in range(inv_square.shape[1]):
+		dx = x - center_x
+		dy = y - center_y
+		if (dx == 0 and dy == 0):
+			inv_square[x,y] = np.NaN
+		else:
+			inv_square[x,y] = 1 / (dx*dx + dy*dy)
+
+print(inv_square.shape)
+
 frame_n = 0
 for frame, std, avg in  zip(dif_vid, stds, avgs):
 	print("Frame:", frame_n)
@@ -105,9 +123,11 @@ for frame, std, avg in  zip(dif_vid, stds, avgs):
 	ys = points[1]
 
 	for x in range(frame.shape[0]):
+		sub_x = center_x - x
 		for y in range(frame.shape[1]):
-			rs_squared = np.divide(1, (np.square(xs - x) + np.square(ys - y)))
-			frame[x,y] = np.nansum(rs_squared)
+			sub_y = center_y - y
+			sub_section = inv_square[sub_x : sub_x+frame.shape[0], sub_y : sub_y+frame.shape[1]]
+			frame[x,y] = np.nansum(inv_square[xs, ys])
 
 
 print("Finding bounds")
@@ -123,7 +143,11 @@ print("Converting")
 dif_vid = dif_vid.astype("uint8")
 	
 print("Writing to mp4")
+new_frame = np.empty((dif_vid.shape[1], dif_vid.shape[2], 3), dtype="uint8")
 for frame in dif_vid:
-	out.write(frame)
+	new_frame[:,:,0] = frame
+	new_frame[:,:,1] = frame
+	new_frame[:,:,2] = frame
+	out.write(new_frame)
 
 out.release()
