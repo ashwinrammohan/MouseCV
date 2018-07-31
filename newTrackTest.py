@@ -15,9 +15,10 @@ import wholeBrain as wb
 import fileManager as fm
 
 import matplotlib.pyplot as plt
-import math
 from hdf5manager import hdf5manager
 import os
+from multiprocessing import Process, Array, cpu_count, Manager
+import ctypes as c
 
 vid_name = "180720_05_under"
 
@@ -91,10 +92,6 @@ dif_vid = mouse_vid[1:] - mouse_vid[:-1]
 print("Getting abs")
 dif_vid = np.abs(dif_vid)
 
-print("Thresholding")
-stds = np.std(dif_vid, axis=(1,2))
-avgs = np.mean(dif_vid, axis=(1,2))
-
 print("Finding gravities...")
 
 print("Making inverse square array")
@@ -111,24 +108,58 @@ for x in range(inv_square.shape[0]):
 		else:
 			inv_square[x,y] = 1 / (dx*dx + dy*dy)
 
-print(inv_square.shape)
 
-frame_n = 0
-for frame, std, avg in  zip(dif_vid, stds, avgs):
-	print("Frame:", frame_n)
-	frame_n += 1
+def _process(output_vid, vid_start, dif_vid, inv_square, output_vid_shape):
+	print("Thresholding")
+	stds = np.std(dif_vid, axis=(1,2))
+	avgs = np.mean(dif_vid, axis=(1,2))
 
-	points = np.where(frame > avg + 3*std)
-	xs = points[0]
-	ys = points[1]
+	output_vid_np = np.frombuffer(output_vid.get_obj()).reshape(output_vid_shape) # extract numpy matrix from special objects
 
-	for x in range(frame.shape[0]):
-		sub_x = center_x - x
-		for y in range(frame.shape[1]):
-			sub_y = center_y - y
-			sub_section = inv_square[sub_x : sub_x+frame.shape[0], sub_y : sub_y+frame.shape[1]]
-			frame[x,y] = np.nansum(inv_square[xs, ys])
+	frame_n = vid_start
+	for i in range(dif_vid.shape[0]):
+		frame = dif_vid[i]
+		std = stds[i]
+		avg = avgs[i]
 
+		points = np.where(frame > avg + 3*std)
+		xs = points[0]
+		ys = points[1]
+
+		for x in range(frame.shape[0]):
+			sub_x = center_x - x
+			for y in range(frame.shape[1]):
+				sub_y = center_y - y
+				sub_section = inv_square[sub_x : sub_x+frame.shape[0], sub_y : sub_y+frame.shape[1]]
+				output_vid_np[i+vid_start,x,y] = np.nansum(inv_square[xs, ys])
+
+		print("Frame done:", frame_n)
+		frame_n += 1
+
+
+threads = []
+wanted_threads = cpu_count()
+print("Creating " + str(wanted_threads) + " threads...")
+output_vid = Array(c.c_double, dif_vid.shape[0]*dif_vid.shape[1]*dif_vid.shape[2]) # create inter-process variables
+lower = 0
+dataPer = int(dif_vid.shape[0] // wanted_threads)
+
+for i in range(wanted_threads): # create all threads
+
+	if i == wanted_threads-1: # for the last thread, give it any leftover rows of data, for example 23 rows, 5 threads, this process will do #17-23
+		_process(output_vid, upper, dif_vid[upper:], inv_square, dif_vid.shape)
+	else: # otherwise just divide up the rows into each process normally
+		lower = i*dataPer
+		upper = (i+1)*dataPer
+		p = Process(target=_process, args=(output_vid, lower, dif_vid[lower:upper], inv_square, dif_vid.shape))
+	
+	p.start()
+	threads.append(p)
+
+for thread in threads:
+	thread.join()
+
+dif_vid = np.frombuffer(output_vid.get_obj()).reshape(dif_vid.shape)
 
 print("Finding bounds")
 dif_max = np.max(dif_vid)
