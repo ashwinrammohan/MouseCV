@@ -60,7 +60,7 @@ for expname in sorted(experiments):
 			print('found match:', expname)
 	# Make output filenames based on name
 	pathlist.extend(experiments[expname])
-	mouse_vid = toNumpy(TiffFile(pathlist[0]).pages).astype("float")
+	mouse_vid = toNumpy(TiffFile(pathlist[0]).pages).astype("float")[:120]
 	mouse_vid_shape = mouse_vid.shape
 	print("Found experiment!!")
 
@@ -101,6 +101,8 @@ center_y = dif_vid.shape[2]-1
 
 wanted_half_radius = 15
 val = wanted_half_radius * wanted_half_radius
+min_percentile = 100 # 100 / `min_percentile` %
+max_radius = wanted_half_radius * math.sqrt(min_percentile - 1)
 
 for x in range(inv_square.shape[0]):
 	for y in range(inv_square.shape[1]):
@@ -122,6 +124,9 @@ def _process(output_vid, vid_start, dif_vid, inv_square, output_vid_shape):
 		std = stds[i]
 		avg = avgs[i]
 
+		# mask = np.zeros_like(frame)
+		# mask[frame > avg + 3*std] = 1
+		
 		points = np.where(frame > avg + 3*std)
 		xs = points[0]
 		ys = points[1]
@@ -131,7 +136,7 @@ def _process(output_vid, vid_start, dif_vid, inv_square, output_vid_shape):
 			for y in range(frame.shape[1]):
 				sub_y = center_y - y
 				sub_section = inv_square[sub_x : sub_x+frame.shape[0], sub_y : sub_y+frame.shape[1]]
-				output_vid_np[i+vid_start,x,y] = np.nansum(inv_square[xs, ys])
+				output_vid_np[i+vid_start,x,y] = np.sum(sub_section[xs, ys])
 
 		print("Frame done:", frame_n)
 		frame_n += 1
@@ -152,8 +157,8 @@ for i in range(wanted_threads): # create all threads
 		lower = i*dataPer
 		upper = (i+1)*dataPer
 		p = Process(target=_process, args=(output_vid, lower, dif_vid[lower:upper], inv_square, dif_vid.shape))
+		p.start()
 	
-	p.start()
 	threads.append(p)
 
 for thread in threads:
