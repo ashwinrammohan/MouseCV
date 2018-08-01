@@ -99,14 +99,14 @@ inv_square = np.empty((dif_vid.shape[1]*2-1, dif_vid.shape[2]*2-1))
 center_x = dif_vid.shape[1]-1
 center_y = dif_vid.shape[2]-1
 
+wanted_half_radius = 15
+val = wanted_half_radius * wanted_half_radius
+
 for x in range(inv_square.shape[0]):
 	for y in range(inv_square.shape[1]):
 		dx = x - center_x
 		dy = y - center_y
-		if (dx == 0 and dy == 0):
-			inv_square[x,y] = np.NaN
-		else:
-			inv_square[x,y] = 1 / (dx*dx + dy*dy)
+		inv_square[x,y] = val / (dx*dx + dy*dy + val)
 
 
 def _process(output_vid, vid_start, dif_vid, inv_square, output_vid_shape):
