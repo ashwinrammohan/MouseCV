@@ -1,7 +1,10 @@
 import numpy as np
 import cv2 as cv
 import sys
+import math
 from tifffile import TiffFile
+from scipy.ndimage.filters import maximum_filter
+from scipy.ndimage.morphology import generate_binary_structure, binary_erosion
 
 try:
 	path_file = open("path.txt", "r")
@@ -13,7 +16,7 @@ except:
 
 import wholeBrain as wb
 import fileManager as fm
-
+import time
 import matplotlib.pyplot as plt
 from hdf5manager import hdf5manager
 import os
@@ -60,7 +63,7 @@ for expname in sorted(experiments):
 			print('found match:', expname)
 	# Make output filenames based on name
 	pathlist.extend(experiments[expname])
-	mouse_vid = toNumpy(TiffFile(pathlist[0]).pages).astype("float")[:120]
+	mouse_vid = toNumpy(TiffFile(pathlist[0]).pages).astype("float")[:40]
 	mouse_vid_shape = mouse_vid.shape
 	print("Found experiment!!")
 
@@ -101,7 +104,7 @@ center_y = dif_vid.shape[2]-1
 
 wanted_half_radius = 15
 val = wanted_half_radius * wanted_half_radius
-min_percentile = 100 # 100 / `min_percentile` %
+min_percentile = 20 # 100 / `min_percentile` %
 max_radius = wanted_half_radius * math.sqrt(min_percentile - 1)
 
 for x in range(inv_square.shape[0]):
@@ -110,6 +113,15 @@ for x in range(inv_square.shape[0]):
 		dy = y - center_y
 		inv_square[x,y] = val / (dx*dx + dy*dy + val)
 
+
+def detect_peaks(image):
+	neighborhood = generate_binary_structure(40, 40)
+	local_max = maximum_filter(image, footprint=neighborhood)==image
+	background = (image==0)
+	eroded_background = binary_erosion(background, structure=neighborhood, border_value=1)
+	detected_peaks = local_max ^ eroded_background
+
+	return detected_peaks
 
 def _process(output_vid, vid_start, dif_vid, inv_square, output_vid_shape):
 	print("Thresholding")
@@ -120,12 +132,11 @@ def _process(output_vid, vid_start, dif_vid, inv_square, output_vid_shape):
 
 	frame_n = vid_start
 	for i in range(dif_vid.shape[0]):
+		t = time.clock()
+
 		frame = dif_vid[i]
 		std = stds[i]
 		avg = avgs[i]
-
-		# mask = np.zeros_like(frame)
-		# mask[frame > avg + 3*std] = 1
 		
 		points = np.where(frame > avg + 3*std)
 		xs = points[0]
@@ -133,12 +144,29 @@ def _process(output_vid, vid_start, dif_vid, inv_square, output_vid_shape):
 
 		for x in range(frame.shape[0]):
 			sub_x = center_x - x
+
+			lower = xs > (x - max_radius)
+			upper = xs < (x + max_radius)
+			bit_result = np.bitwise_and(lower, upper)
+			xs_in_band = xs[bit_result]
+			ys_in_band = ys[bit_result]
+
 			for y in range(frame.shape[1]):
 				sub_y = center_y - y
-				sub_section = inv_square[sub_x : sub_x+frame.shape[0], sub_y : sub_y+frame.shape[1]]
-				output_vid_np[i+vid_start,x,y] = np.sum(sub_section[xs, ys])
 
-		print("Frame done:", frame_n)
+				lower = ys_in_band > (y - max_radius)
+				upper = ys_in_band < (y + max_radius)
+				bit_result = np.bitwise_and(lower, upper)
+				this_xs = xs_in_band[bit_result]
+				this_ys = ys_in_band[bit_result]
+
+				sub_section = inv_square[sub_x : sub_x+frame.shape[0], sub_y : sub_y+frame.shape[1]]
+				output_vid_np[i+vid_start,x,y] = np.sum(sub_section[this_xs, this_ys])
+
+
+		#result = detect_peaks(output_vid_np[i+vid_start]).astype('uint8')*255
+		#output_vid_np[i+vid_start][...] = result
+		print("Frame done:", frame_n, "dt:", time.clock() - t)
 		frame_n += 1
 
 
