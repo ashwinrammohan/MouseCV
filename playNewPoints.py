@@ -4,35 +4,19 @@ import cv2 as cv
 import time
 import math
 
-f = h5("mouse_vectors.hdf5").load()
-contour_data = f["contour_data"].astype("int32")
-n_contours = f["n_contours"]
+f = h5("new_mouse_vectors.hdf5").load()
+f_bl = f["bl"].astype("int64")
+f_br = f["br"].astype("int64")
+f_fl = f["fl"].astype("int64")
+f_fr = f["fr"].astype("int64")
+feet = [f_bl, f_br, f_fl, f_fr]
 
-mv = np.empty((contour_data.shape[0], 480, 640, 3), dtype='uint8')
-prev_frame = contour_data[0, :n_contours[0]]
+mv = np.empty((f_bl.shape[0], 480, 640, 3), dtype='uint8')
 
-for i in range(contour_data.shape[0]):
-	n = n_contours[i]
-
-	for x, y in contour_data[i, :n]:
-		min_v = (0, 0)
-		min_dist = (1000**2) * 2
-		min_pos = (0,0)
-		for x2, y2 in prev_frame:
-			dx = x2 - x
-			dy = y2 - y
-			dist = dx*dx + dy*dy
-			if (dist < min_dist):
-				min_dist = dist
-				min_v = (dx, dy)
-				min_pos = (x2, y2)
-
-		cv.line(mv[i], (x, y), (x + min_v[0], y + min_v[1]), (0, 255, 0))
-		cv.circle(mv[i], min_pos, 3, (0, 0, 255), -1)
+for f in feet:
+	for i in range(f.shape[0]):
+		x, y = f[i]
 		cv.circle(mv[i], (x, y), 3, (255, 0, 0), -1)
-
-
-	prev_frame = contour_data[i, :n]
 
 print("Playing Movie")
 print("Blue means new, Red means old")

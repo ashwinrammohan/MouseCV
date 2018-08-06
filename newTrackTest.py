@@ -28,8 +28,8 @@ vid_name = experimentName + "_under"
 
 fps = 30
 output = "Outputs/" + vid_name + "_shape.avi"
-
 fourcc = cv.VideoWriter_fourcc('M','J','P','G') 
+
 directory = "Assets"
 videofiles = fm.findFiles(directory, '(\d{6}_\d{2})\D+([@-](\d{4}))?\.tiff?', regex=True)
 experiments = fm.movieSorter(videofiles)
@@ -65,7 +65,7 @@ hdf5File = hdf5manager(hdf5FilePath)
 n_frames_total = 19000
 max_contours = 50
 frame_n = 0
-hdf5Dict = {"contour_data":np.empty((n_frames_total, max_contours, 2), dtype='uint32'), "n_contours":np.empty((n_frames_total), dtype='uint32')}
+hdf5Dict = {"contour_data":np.empty((n_frames_total, max_contours, 2), dtype='uint32'), "n_contours":np.empty((n_frames_total), dtype='uint32'), "stds":np.empty((n_frames_total))}
 
 fl = TiffFile(pathlist[0])
 w = fl.pages[0].shape[0]
@@ -79,6 +79,7 @@ def track_vid(mouse_vid, mouse_vid_shape, out, hdf5Dict):
 
 	contour_data = hdf5Dict["contour_data"]
 	n_contours = hdf5Dict["n_contours"]
+	stds_hdf5 = hdf5Dict["stds"]
 
 	print(mouse_vid_shape)
 	print("Getting dif")
@@ -107,7 +108,9 @@ def track_vid(mouse_vid, mouse_vid_shape, out, hdf5Dict):
 
 	print("Writing to mp4")
 	new_frame = np.empty((dif_vid.shape[1], dif_vid.shape[2], 3), dtype="uint8")
-	for frame, bin_frame in zip(mouse_vid[1:], new_dif_vid):
+	for frame, bin_frame, std in zip(mouse_vid[1:], new_dif_vid, stds):
+		stds_hdf5[frame_n] = std
+
 		new_frame[:,:,0] = frame
 		new_frame[:,:,1] = frame
 		new_frame[:,:,2] = frame
@@ -151,5 +154,7 @@ for path in pathlist:
 
 
 hdf5Dict["contour_data"] = hdf5Dict["contour_data"][:frame_n]
+hdf5Dict["n_contours"] = hdf5Dict["n_contours"][:frame_n]
+hdf5Dict["stds"] = hdf5Dict["stds"][:frame_n]
 hdf5File.save(hdf5Dict)
 out.release()
