@@ -52,11 +52,9 @@ if __name__ == '__main__':
 title = "Trigger" if trigger else "Precursor"
 
 overlapped_domain_map = np.zeros((domain_map.shape[1], domain_map.shape[2]), dtype="uint32")
-for i, region in enumerate(domain_map):
+for i, region in enumerate(domain_map[::-1]):
 	wr = np.where(region == 1)
-	overlapped_domain_map[wr[0], wr[1]] = i+1
-
-return overlapped_domain_map
+	overlapped_domain_map[wr[0], wr[1]] = domain_map.shape[0] - i
 
 '''
 Calculates and returns the min window matrix, which contains the first time window at which event coincidence is

@@ -23,11 +23,11 @@ import os
 from multiprocessing import Process, Array, cpu_count, Manager
 import ctypes as c
 
-experimentName = "180713_12"
+experimentName = "180807_01"
 vid_name = experimentName + "_under"
 
 fps = 30
-output = "Outputs/" + vid_name + "_shape.avi"
+output = "Outputs/" + vid_name + "_result.avi"
 fourcc = cv.VideoWriter_fourcc('M','J','P','G') 
 
 directory = "Assets"
@@ -60,9 +60,10 @@ for expname in sorted(experiments):
 	pathlist.extend(experiments[expname])
 	print("Found experiment")
 
-hdf5FilePath = "mouse_vectors.hdf5"
+hdf5FilePath = "mouse_vectors_" + experimentName + ".hdf5"
 hdf5File = hdf5manager(hdf5FilePath)
-n_frames_total = 19000
+n_frames_total = len(pathlist) * 1000
+print("Guessed", n_frames_total, "frames.")
 max_contours = 50
 frame_n = 0
 hdf5Dict = {"contour_data":np.empty((n_frames_total, max_contours, 2), dtype='uint32'), "n_contours":np.empty((n_frames_total), dtype='uint32'), "stds":np.empty((n_frames_total))}
@@ -87,6 +88,7 @@ def track_vid(mouse_vid, mouse_vid_shape, out, hdf5Dict):
 
 	print("Getting abs")
 	dif_vid = np.abs(dif_vid)
+
 
 	print("Blurring")
 	for i in range(dif_vid.shape[0]):
@@ -125,6 +127,7 @@ def track_vid(mouse_vid, mouse_vid_shape, out, hdf5Dict):
 			if (areas[i] > 0):
 				contour_data[frame_n, cnt_count, 0] = m['m10']/m['m00']
 				contour_data[frame_n, cnt_count, 1] = m['m01']/m['m00']
+				cv.circle(new_frame, (int(contour_data[frame_n, cnt_count, 0]), int(contour_data[frame_n, cnt_count, 1])), 3, (0, 255, 0), -1)
 				cnt_count += 1
 
 		n_contours[frame_n] = cnt_count
@@ -143,14 +146,25 @@ def track_vid(mouse_vid, mouse_vid_shape, out, hdf5Dict):
 			new_frame[-areas[index]:, i*20:i*20+10, 1] = 255
 
 		cv.drawContours(new_frame, contours, -1, (0,0,255), 2)
+
 		out.write(new_frame)
 		frame_n += 1
 
 
+time_sofar = 0
+progress = 0
+total = len(pathlist)
+
 for path in pathlist:
+	t = time.clock()
 	mouse_vid = toNumpy(TiffFile(path).pages).astype("float")
 	mouse_vid_shape = mouse_vid.shape
 	track_vid(mouse_vid, mouse_vid_shape, out, hdf5Dict)
+	dt = time.clock() - t
+	time_sofar += dt
+	progress += 1
+	est = (time_sofar / progress * (total - progress)) / 60
+	print("Tiff", progress, "/", total, "finished, took", dt, "seconds. Estimated remaining time:", est, "minutes.")
 
 
 hdf5Dict["contour_data"] = hdf5Dict["contour_data"][:frame_n]

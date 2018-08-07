@@ -15,11 +15,11 @@ except:
 
 import fileManager as fm
 
-experimentName = "180713_12"
+experimentName = "180807_01"
 vid_name = experimentName + "_under"
 
-f = h5("mouse_vectors.hdf5").load()
-f_write = h5("new_mouse_vectors.hdf5")
+f = h5("mouse_vectors_"+experimentName+".hdf5").load()
+f_write = h5("new_mouse_vectors_"+experimentName+".hdf5")
 contour_data = f["contour_data"].astype("int32")
 n_contours = f["n_contours"]	
 
@@ -43,7 +43,7 @@ print("Min dist:", np.min(stds), "Max dist:", np.max(stds))
 fps = 30
 output = "Outputs/" + vid_name + "_shape.avi"
 fourcc = cv.VideoWriter_fourcc('M','J','P','G') 
-cap = cv.VideoCapture("Assets/180713_12_under.mp4")
+cap = cv.VideoCapture("Assets/"+vid_name+".mp4")
 
 f_bl = (0,0)
 f_br = (0,0)
@@ -109,7 +109,7 @@ def limb_track():
 
 		avg_sz = 5
 		d_clr = 30
-		im = cv.GaussianBlur(im, (15, 15), 0)
+		im = cv.GaussianBlur(im, (5, 5), 0)
 		for i in range(num_limbs):
 			if dists[i] < max_dist:
 				fs[i] = (new_pos[i][0], new_pos[i][1])
@@ -155,7 +155,7 @@ def limb_track():
 
 
 		#cv.putText(im, str(frame_n), (5,25), cv.FONT_HERSHEY_SIMPLEX, 1.0, (255,255,255))
-		#cv.imshow("Dots", im)
+		cv.imshow("Dots", im)
 
 		if pause:
 			k = cv.waitKey(0)
