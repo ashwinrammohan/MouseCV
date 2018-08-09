@@ -4,9 +4,16 @@ from matplotlib import pyplot as plt
 from hdf5manager import *
 import cv2 as cv
 import sys
-sys.path.append("/Users/andrew/Code Github/pyWholeBrain")
-from timecourseAnalysis import butterworth
 
+try:
+	path_file = open("path.txt", "r")
+	sys.path.append(path_file.read())
+	path_file.close()
+except:
+	print("Can't import, path.txt doesn't exist")
+	pass
+
+from timecourseAnalysis import butterworth
 
 class FixedQueue:
 	def __init__(self, size, values=[]):
@@ -104,32 +111,34 @@ high_limit = 0.5
 low_limit = 0.01
 data = hdf5manager("P2_timecourses.hdf5").load()
 print("brain data below...")
-vals = data['brain'][0][:2000]
+vals = data['brain'][100][:5000]
 
 print("Global Average: " + str(np.mean(vals)))
 print("Global Stdev: " + str(np.std(vals)))
 
-xs = list(np.linspace(0,2000,2000))
+xs = list(np.linspace(0,vals.shape[0],vals.shape[0]))
 stDev_threshold = 0.5
 butter_vals = butterworth(vals, high = high_limit, low = None)
-legend = ("Butterworth Data", "Avgs", "Stdevs")
+legend = ("Data", "Avgs", "Stdevs")
 
 while (True):
-	spikes, avgs, stdevs = detectSpike(butter_vals,100,stDev_threshold)
+	spikes, avgs, stdevs = detectSpike(butter_vals, 100, stDev_threshold)
 	plt.clf()
 	#plt.plot(xs,vals)
-	plt.plot(xs,butter_vals)
+	plt.plot(xs,butter_vals, alpha = 0.4)
 	plt.plot(xs,avgs)
 	plt.plot(xs, stdevs)
 	plt.legend(legend)
 	plt.title("Standard Deviation Factor: " + str(stDev_threshold))
-	plt.axvline(x = spikes[0], color = (1,0,0,1)) #red
-	plt.axvline(x = spikes[-1], color = (1,0,0,1)) #red
-	for i in range(1, len(spikes)-1):
+	plt.xlabel("Frame Number")
+	plt.ylabel("Signal Intensity")
+	#plt.axvline(x = spikes[0], color = (1,0,0,1), alpha = 0.4) #red
+	#plt.axvline(x = spikes[-1], color = (1,0,0,1), alpha = 0.4) #red
+	'''for i in range(1, len(spikes)-1):
 		if (spikes[i-1] + 1 < spikes[i] and spikes[i] + 1 == spikes[i+1]) or (spikes[i-1] + 1 == spikes[i] and spikes[i] + 1 < spikes[i+1]):
-			plt.axvline(x = spikes[i], color = (1,0,0,1)) #red
+			plt.axvline(x = spikes[i], color = (1,0,0,1), alpha = 0.4) #red
 		else:
-			plt.axvline(x = spikes[i], color = (1,1,0,0.3)) #yellow
+			plt.axvline(x = spikes[i], color = (1,1,0,0.3)) #yellow'''
 
 	plt.show()
 	stDev_threshold /= 2

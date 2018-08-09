@@ -5,6 +5,7 @@
 path.txt
 *.hdf5
 *.tiff
+MouseCV.git/
 
 # gitignore from interwebs
 # Byte-compiled / optimized / DLL files

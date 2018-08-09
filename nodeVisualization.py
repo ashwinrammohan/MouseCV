@@ -10,7 +10,7 @@ import time
 eventMatrix = None
 pMatrix = None
 domain_map = None
-
+fps = 10
 ratio = 10000000
 pValue_thresh = 0.00001
 index = 0
@@ -18,6 +18,7 @@ whole_brain_map = None
 trigger = False
 
 windows = None
+min_win_rates = None
 
 if __name__ == '__main__':
 	print("Reached main")
@@ -54,7 +55,17 @@ title = "Trigger" if trigger else "Precursor"
 overlapped_domain_map = np.zeros((domain_map.shape[1], domain_map.shape[2]), dtype="uint32")
 for i, region in enumerate(domain_map[::-1]):
 	wr = np.where(region == 1)
-	overlapped_domain_map[wr[0], wr[1]] = domain_map.shape[0] - i
+	overlapped_domain_map[wr[0], wr[1]] = (domain_map.shape[0]-i)
+
+img_domain_map = overlapped_domain_map.copy()
+img_domain_map = img_domain_map / np.max(img_domain_map)
+img_domain_map *= 255
+img_domain_map = img_domain_map.astype('uint8')
+
+
+
+contours_img = np.zeros_like(img_domain_map)
+#return overlapped_domain_map
 
 '''
 Calculates and returns the min window matrix, which contains the first time window at which event coincidence is
@@ -62,10 +73,11 @@ Calculates and returns the min window matrix, which contains the first time wind
 pMatrix from the hdf5 coincidence file...the windows at which the p value is greater than some threshold (defined by the
 global variable 'pValue_thresh') are the "significant" windows, and the first of these windows is the min window.
 '''
-def minWindows(fps = 10):
-	global windows
+def minWindows():
+	global windows, min_win_rates
 
 	wins = np.zeros((eventMatrix.shape[0], eventMatrix.shape[1], 3))
+	min_win_rates = np.zeros((eventMatrix.shape[0], eventMatrix.shape[1]))
 
 	for i, results in enumerate(pMatrix):
 		min_rate = 1
@@ -77,14 +89,15 @@ def minWindows(fps = 10):
 
 				if (inds[0].shape[0] > 0):
 					minWindow = (inds[0][0] + 1) * (1/fps)
+					min_win_rates[i][j] = eventMatrix[i,j,inds[0][0]]
 
 					if minWindow < 2:
 						wins[i,j,0] = minWindow/2
 						wins[i,j,1] = 1
 						wins[i,j,2] = 1
 						wins[i,j] = colors.hsv_to_rgb(wins[i,j]) * 255
-						min_rate = min(min_rate, eventMatrix[i,j,inds[0][0]])
-						max_rate = max(max_rate, eventMatrix[i,j,inds[0][0]])
+						min_rate = min(min_rate, min_win_rates[i][j])
+						max_rate = max(max_rate, min_win_rates[i][j])
 				else:
 					wins[i][j] = 150
 			else:
@@ -126,34 +139,38 @@ def getTimeMap(node_number):
 	min_rate = 1
 	max_rate = 0
 
+	print(min_win_rates.shape)
+
+	if trigger:
+		minRate = np.min(min_win_rates[:, index1])
+		maxRate = np.max(min_win_rates[:, index1])
+	else:
+		minRate = np.min(min_win_rates[index1])
+		maxRate = np.max(min_win_rates[index1])
+
 	for x, y, r in zip(centerXs, centerYs, radii):
-		index2 = findRegion(y, x) - 1
+		index2 = findRegion(x,y) - 1
 		coinRate = 0
 
 		if trigger and not(np.any(np.isnan(eventMatrix[index2, index1]))):
 			win_t = np.where(pMatrix[index2, index1] > 1 - pValue_thresh)[0]
 			if (win_t.shape[0] > 0):
-				minRate = minRates[index2, index1]
-				maxRate = maxRates[index2, index1]
-
 				coinRate = (eventMatrix[index2,index1,win_t[0]] - minRate) / (maxRate - minRate)
 
-				color = cm.jet(coinRate)
-				color = (color[0] * 255, color[1] * 255, color[2] * 255)
-				cv.circle(time_map, (y,x), 4, color, -1)
+				color = (0, 0, int(coinRate * 255))
+				cv.circle(time_map, (x,y), 4, color, -1)
 
 		elif not(trigger) and not(np.any(np.isnan(eventMatrix[index1, index2]))):
 			win_t = np.where(pMatrix[index1, index2] > 1 - pValue_thresh)[0]
 
 			if (win_t.shape[0] > 0):
-				minRate = minRates[index1]
-				maxRate = maxRates[index1]
 
 				coinRate = (eventMatrix[index1,index2,win_t[0]] - minRate) / (maxRate - minRate)
 
-				color = cm.jet(coinRate)
-				color = (color[0] * 255, color[1] * 255, color[2] * 255)
-				cv.circle(time_map, (y,x), 4, color, -1)
+				color = (0, 0, int(coinRate * 255))
+
+				cv.circle(time_map, (x,y), 4, color, -1)
+	time_map[np.where(contours_img == 255)] = 0
 
 	# print(min_rate, max_rate)
 
@@ -199,19 +216,20 @@ def region_click(event, x, y, flags, param):
 
 	if event == cv.EVENT_LBUTTONUP:
 		index = findRegion(x,y)
-		img = np.zeros_like(overlapped_domain_map)
+		img = np.zeros_like(img_domain_map)
 		img[overlapped_domain_map == index] = 255
 
 		for x, y, r in zip(centerXs, centerYs, radii):
-			if findRegion(y,x) == index:
-				cv.circle(img, (y,x), 3, (150,150,150), -1)
+			if findRegion(x,y) == index:
+				cv.circle(img, (x,y), 3, (150,150,150), -1)
 
-		cv.imshow("Region", img)
-		cv.waitKey(0)
-		cv.destroyWindow("Region")
+		# cv.imshow("Region", img)
+		# cv.waitKey(0)
+		# cv.destroyWindow("Region")
 
 		print("Displaying index", index)
 		getTimeMap(index)
+		#time_map[contours_img == 255] = 0
 		cv.imshow("Time Map " + title, time_map)
 	elif event == cv.EVENT_RBUTTONUP:
 		index2 = findRegion(x,y) - 1
@@ -219,11 +237,11 @@ def region_click(event, x, y, flags, param):
 		if trigger:
 			win_t = np.where(pMatrix[index2, index1] > 1 - pValue_thresh)[0]
 			if win_t.shape[0] > 0:
-				print("Coincidence rate of", index1, "against", index2, "=", eventMatrix[index2, index1, win_t[0]])
+				print("Coincidence rate of", index1, "against", index2, "=", eventMatrix[index2, index1, win_t[0]], "at a time window of", win_t[0])
 		else:
 			win_t = np.where(pMatrix[index1, index2] > 1 - pValue_thresh)[0]
 			if win_t.shape[0] > 0:
-				print("Coincidence rate of", index1, "against", index2, "=", eventMatrix[index1, index2, win_t[0]])
+				print("Coincidence rate of", index1, "against", index2, "=", eventMatrix[index1, index2, win_t[0]], "at a time window of", win_t[0])
 
 '''
 When the value on the cv trackbar is changed, this method recalculates the pValue_thresh
@@ -345,13 +363,29 @@ def findCentersAndRadii():
 			contourImage = np.zeros_like(img)
 			cont_area = cv.contourArea(contour)
 			if (cont_area > 100):
-				cv.drawContours(contourImage, contours, i, (255,255,255), 1)
-				x, y = centerOnContour(contour)
-				centerXs.append(x)
-				centerYs.append(y)
+				contour = contour[:,0]
+				xs = contour[:,0]
+				ys = contour[:,1]
+				centerXs.append(int(np.mean(xs)))
+				centerYs.append(int(np.mean(ys)))
+
+				# index = findRegion(centerXs[-1], centerYs[-1])
+				# img = np.zeros_like(img_domain_map)
+				# img[overlapped_domain_map == index] = 255
+
+				# cv.circle(img, (centerXs[-1], centerYs[-1]), 3, (150,150,150), -1)
+
+				# cv.drawContours(img, contours, i, (150,150,150), 1)
+				cv.drawContours(contours_img, contours, i, (255,255,255), 1)
+
+				# cv.imshow("Region", img)
+				# cv.waitKey(0)
+				# cv.destroyWindow("Region")
+
 
 	centerXs = np.asarray(centerXs, dtype="uint32")
 	centerYs = np.asarray(centerYs, dtype="uint32")
+
 	return centerXs, centerYs, np.zeros_like(centerXs)
 
 '''
@@ -360,10 +394,9 @@ for the circles and the radii from the previous method.
 '''
 
 def drawNodes(centerXs, centerYs, radii):
-	img = overlapped_domain_map.copy() #np.zeros((domain_map.shape[1], domain_map.shape[2]))
+	img = img_domain_map.copy() #np.zeros((domain_map.shape[1], domain_map.shape[2]))
 	for x, y, r in zip(centerXs, centerYs, radii):
-		#cv.circle(img, (y,x), r, (255,255,255), 2)
-		cv.circle(img, (y,x), 3, (255,255,255), -1)
+		cv.circle(img, (x,y), 3, (255,255,255), -1)
 
 	cv.imshow("Node Map", img)
 
@@ -379,24 +412,29 @@ def findIndex(centerXs, centerYs, radii, mX, mY):
 			print("Region found at index", i)
 			cv.imshow("Region", domain_map[i] * 255)
 
+
 minWindows()
 cv.namedWindow("Time Map " + title)
 cv.createTrackbar("P-value threshold", "Time Map " + title, int(pValue_thresh*ratio), 500, callback)
 cv.setMouseCallback("Time Map " + title, region_click)
+
+
 centerXs, centerYs, radii = findCentersAndRadii()
-drawNodes(centerXs, centerYs, radii)
+# drawNodes(centerXs, centerYs, radii)
+
 
 time_map = np.zeros((domain_map.shape[1], domain_map.shape[2], 3), dtype="uint8")
+time_map[np.where(contours_img == 255)] = 0
 
 getTimeMap(1)
-
+time_map[np.where(contours_img == 255)] = 0
 cv.imshow("Time Map " + title, time_map)
 whole_brain_map = time_map
 
-#cv.namedWindow("Node Map")
-#drawNodes(centerXs, centerYs, radii)
+cv.namedWindow("Node Map")
+drawNodes(centerXs, centerYs, radii)
 
-#cv.setMouseCallback("Node Map", findIndexCallback)
+cv.setMouseCallback("Node Map", findIndexCallback)
 
 # print(np.max(time_map))
 

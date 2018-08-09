@@ -1,7 +1,9 @@
 from hdf5manager import hdf5manager as h5
 import numpy as np
 import cv2 as cv
+from matplotlib import pyplot as plt
 from tifffile import TiffFile
+from scipy.cluster.vq import vq, kmeans, whiten
 
 import time, math, sys
 
@@ -16,15 +18,19 @@ except:
 import fileManager as fm
 
 experimentName = "180807_01"
-vid_name = experimentName + "_under"
+vid_name = experimentName + "_result"
 
 f = h5("mouse_vectors_"+experimentName+".hdf5").load()
 f_write = h5("new_mouse_vectors_"+experimentName+".hdf5")
 contour_data = f["contour_data"].astype("int32")
 n_contours = f["n_contours"]	
 
-names = ["bl", "br", "fl", "fr"]
-write_dict = {"bl":np.empty((contour_data.shape[0], 2)), "br":np.empty((contour_data.shape[0], 2)), "fl":np.empty((contour_data.shape[0], 2)), "fr":np.empty((contour_data.shape[0], 2))}
+names = ["bl", "br", "fl", "fr", "t"]
+write_dict = {"bl":np.empty((contour_data.shape[0], 2)), 
+				"br":np.empty((contour_data.shape[0], 2)), 
+				"fl":np.empty((contour_data.shape[0], 2)), 
+				"fr":np.empty((contour_data.shape[0], 2)),
+				"t":np.empty((contour_data.shape[0], 2))}
 
 
 stds = f["stds"]
@@ -41,20 +47,38 @@ stds += wanted_min
 print("Min dist:", np.min(stds), "Max dist:", np.max(stds))
 
 fps = 30
-output = "Outputs/" + vid_name + "_shape.avi"
+output = "Outputs/" + vid_name + "_under_result.avi"
 fourcc = cv.VideoWriter_fourcc('M','J','P','G') 
-cap = cv.VideoCapture("Assets/"+vid_name+".mp4")
+cap = cv.VideoCapture("Outputs/"+vid_name+".avi")
 
 f_bl = (0,0)
 f_br = (0,0)
 f_fl = (0,0)
 f_fr = (0,0)
-fs = [f_bl, f_br, f_fl, f_fr]
-num_limbs = 4
+f_t = (0,0)
+fs = [f_bl, f_br, f_fl, f_fr, f_t]
+num_limbs = len(write_dict.keys())
 
 directory = "Assets"
 videofiles = fm.findFiles(directory, '(\d{6}_\d{2})\D+([@-](\d{4}))?\.tiff?', regex=True)
 experiments = fm.movieSorter(videofiles)
+
+def cost(kmean_points, needed_limb_indices):
+	limb_count = needed_limb_indices.shape[0]
+	distances = np.empty((limb_count, kmean_points.shape[0]))
+	for i in range(limb_count):
+		limb_x, limb_y = fs[needed_limb_indices[i]]
+		for j in range(kmean_points.shape[0]):
+			x, y = kmean_points[j]
+			dx = limb_x - x
+			dy = limb_y - y
+			distance = dx*dx + dy*dy
+			distances[i, j] = distance
+
+		distances[i] = np.sort(distances[i])
+
+	avg_dist = np.mean(distances[:,0])
+	return avg_dist + kmean_points.shape[0] * 200
 
 def toNumpy(tiffObject):
 	pages = 0
@@ -79,82 +103,93 @@ def limb_track():
 	pause = False
 
 	while True:
-		print(mv_i)
+		print("Frame:", mv_i)
 		if frame_n >= contour_data.shape[0]:
-			mv_i = 0
+			#mv_i = 0
+			print("Frames completed:", frame_n)
+			f_write.save(write_dict)
+			break
 
 		t = time.clock()
 		ret, im = cap.read()
 
+		for x, y in fs:
+			cv.circle(im, (x, y), 2, (255, 0, 0), -1)
 
-		frame = contour_data[frame_n]
-		n = n_contours[frame_n]
-		dists = np.repeat(-1, num_limbs)
-		new_pos = np.empty((num_limbs, 2), dtype=contour_data.dtype)
-		max_dist = stds[frame_n]*stds[frame_n]
-		if frame_n == 0:
-			max_dist = 50**2
+		n = n_contours[mv_i]
 
-		for x, y in frame[:n]:
+		if (n > 0):
+
+			c_points = contour_data[mv_i, :n]
+			
+			limb_distances = np.empty((num_limbs, n))
 			for i in range(num_limbs):
-				fx, fy = fs[i]
-				dx = fx - x
-				dy = fy - y
-				dist = dx*dx + dy*dy
+				limb_x, limb_y = fs[i]
+				for j in range(n):
+					x, y = c_points[j]
+					dx = limb_x - x
+					dy = limb_y - y
+					distance = dx*dx + dy*dy
+					limb_distances[i, j] = distance
 
-				if dist < dists[i] or dists[i] == -1:
-					dists[i] = dist
-					new_pos[i][0] = x
-					new_pos[i][1] = y
+				limb_distances[i] = np.sort(limb_distances[i])
 
-		avg_sz = 5
-		d_clr = 30
-		im = cv.GaussianBlur(im, (5, 5), 0)
+			threshold = 1500
+			needed_limbs = np.where(limb_distances[:,0] < threshold)[0]
+			
+			whitened = whiten(c_points)
+			x_scale = c_points[0,0] / whitened[0,0]
+			y_scale = c_points[0,1] / whitened[0,1]
+
+			if (needed_limbs.shape[0] > 0):
+				max_k = 6
+				costs = np.empty(max_k - needed_limbs.shape[0])
+				all_kmean_points = []
+				for k in range(needed_limbs.shape[0], max_k):
+					points, distortion = kmeans(whitened, k)
+					points[:,0] *= x_scale
+					points[:,1] *= y_scale
+					points = points.astype('int32')
+					all_kmean_points.append(points)
+					costs[k - needed_limbs.shape[0]] = cost(points, needed_limbs)
+
+				best_ind = np.argmin(costs)
+				best_points = all_kmean_points[best_ind]
+
+				for i, (x, y) in enumerate(best_points):
+					cv.circle(im, (x, y), 2, (0, 0, 255), -1)
+				
+				distances = np.empty((needed_limbs.shape[0], best_points.shape[0]))
+				indices = np.empty((needed_limbs.shape[0], best_points.shape[0], 2), dtype='uint8')
+				for i in range(needed_limbs.shape[0]):
+					limb_x, limb_y = fs[needed_limbs[i]]
+					for j in range(best_points.shape[0]):
+						x, y = best_points[j]
+						dx = x - limb_x
+						dy = y - limb_y
+						distance = dx*dx + dy*dy
+						distances[i,j] = distance
+						indices[i,j,0] = needed_limbs[i]
+						indices[i,j,1] = j
+
+				for i in range(needed_limbs.shape[0]):
+					i, j = np.unravel_index(np.nanargmin(distances), distances.shape)
+					limb_ind = indices[i,j,0]
+					point_ind = indices[i,j,1]
+					new_limb_pos = (best_points[point_ind,0], best_points[point_ind,1])
+					cv.line(im, fs[limb_ind], new_limb_pos, (255, 255, 255), 1)
+					fs[limb_ind] = new_limb_pos
+					distances[i] = np.NaN
+					distances[:,j] = np.NaN
+
+
 		for i in range(num_limbs):
-			if dists[i] < max_dist:
-				fs[i] = (new_pos[i][0], new_pos[i][1])
-
+			name = names[i]
 			x, y = fs[i]
+			write_dict[name][mv_i,0] = x
+			write_dict[name][mv_i,1] = y
 
-			avg_clr = np.mean(im[y-avg_sz:y+avg_sz, x-avg_sz:x+avg_sz, 0])
-			min_clr = avg_clr - d_clr
-			max_clr = avg_clr + d_clr
-
-			retval, result = cv.threshold(im[:,:,0], max_clr, 255, cv.THRESH_TOZERO_INV);
-			retval, result = cv.threshold(result, min_clr, 255, cv.THRESH_BINARY);
-			a, contours, hierarchy = cv.findContours(result, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
-
-			min_dist = -1
-			wanted_contour_i = 0
-			cnt_pos = (0,0)
-			for j, cnt in enumerate(contours):
-				m = cv.moments(cnt)
-				if m['m00'] <= 100:
-					continue
-
-				cnt_x = int(m['m10']/m['m00'])
-				cnt_y = int(m['m01']/m['m00'])
-				area = m["m00"]
-				dx = cnt_x - x
-				dy = cnt_y - y
-				dist = dx*dx + dy*dy
-				if min_dist == -1 or dist < min_dist:
-					min_dist = dist
-					wanted_contour_i = j
-					cnt_pos = (cnt_x, cnt_y)
-
-			cv.drawContours(im, contours, wanted_contour_i, (0,255,0), 1)
-			im[y:y+3, x:x+3, 1:3] = 0
-			im[y:y+3, x:x+3, 0] = 255
-			x, y = cnt_pos
-			im[y:y+3, x:x+3, 0:2] = 0
-			im[y:y+3, x:x+3, 2] = 255
-
-			write_dict[names[i]][frame_n,0] = x
-			write_dict[names[i]][frame_n,1] = y
-
-
-		#cv.putText(im, str(frame_n), (5,25), cv.FONT_HERSHEY_SIMPLEX, 1.0, (255,255,255))
+		cv.putText(im, str(frame_n), (5,25), cv.FONT_HERSHEY_SIMPLEX, 1.0, (255,255,255))
 		cv.imshow("Dots", im)
 
 		if pause:
@@ -203,13 +238,16 @@ def limb_click(event, x, y, flags, param):
 			print("Click front right...")
 		elif index == 3:
 			fs[index] = (x, y)
+			index += 1
+			print("Click tail...")
+		elif index == 4:
+			fs[index] = (x,y)
 			cv.destroyAllWindows()
+			limb_track()
 
 			# for path in pathlist:
 			# 	mouse_vid = toNumpy(TiffFile(path).pages).astype("float")
 			# 	limb_track(mouse_vid)
-
-			limb_track()
 
 			print("All Done!")
 

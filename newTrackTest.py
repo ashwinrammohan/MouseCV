@@ -24,10 +24,10 @@ from multiprocessing import Process, Array, cpu_count, Manager
 import ctypes as c
 
 experimentName = "180807_01"
-vid_name = experimentName + "_under"
+vid_name = experimentName + "_result"
 
 fps = 30
-output = "Outputs/" + vid_name + "_result.avi"
+output = "Outputs/" + vid_name + ".avi"
 fourcc = cv.VideoWriter_fourcc('M','J','P','G') 
 
 directory = "Assets"
@@ -89,24 +89,24 @@ def track_vid(mouse_vid, mouse_vid_shape, out, hdf5Dict):
 	print("Getting abs")
 	dif_vid = np.abs(dif_vid)
 
-
 	print("Blurring")
 	for i in range(dif_vid.shape[0]):
-		dif_vid[i] = cv.GaussianBlur(dif_vid[i], (31, 31), 0)
-
+		dif_vid[i] = cv.GaussianBlur(dif_vid[i], (9, 9), 0)
+		
 	new_dif_vid = np.zeros_like(dif_vid, dtype='uint8')
 
 	print("Thresholding")
 	stds = np.std(dif_vid, axis=(1,2))[...,None,None]
-	max_std = np.max(stds)
-	min_std = np.min(stds)
-	avgs = np.mean(dif_vid, axis=(1,2))[...,None,None]
-	thresh = avgs + stds * 3
+	# max_std = np.max(stds)
+	# min_std = np.min(stds)
+	# avgs = np.mean(dif_vid, axis=(1,2))[...,None,None]
+	# thresh = avgs + stds * 3
+	thresh = 10
 
 	new_dif_vid[dif_vid < thresh] = 0
 	new_dif_vid[dif_vid >= thresh] = 255
 
-	mouse_vid[1:,-20:,-20:] = (255 * (stds - min_std) / (max_std - min_std)).astype('uint8')
+	#mouse_vid[1:,-20:,-20:] = (255 * (stds - min_std) / (max_std - min_std)).astype('uint8')
 
 	print("Writing to mp4")
 	new_frame = np.empty((dif_vid.shape[1], dif_vid.shape[2], 3), dtype="uint8")
@@ -118,35 +118,17 @@ def track_vid(mouse_vid, mouse_vid_shape, out, hdf5Dict):
 		new_frame[:,:,2] = frame
 
 		blah, contours, hierarchy = cv.findContours(bin_frame, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
-		areas = np.empty(len(contours))
 		cnt_count = 0
 		for i, cnt in enumerate(contours):
 			m = cv.moments(cnt)
-			areas[i] = m["m00"]
 
-			if (areas[i] > 0):
+			if (m["m00"] > 0):
 				contour_data[frame_n, cnt_count, 0] = m['m10']/m['m00']
 				contour_data[frame_n, cnt_count, 1] = m['m01']/m['m00']
 				cv.circle(new_frame, (int(contour_data[frame_n, cnt_count, 0]), int(contour_data[frame_n, cnt_count, 1])), 3, (0, 255, 0), -1)
 				cnt_count += 1
 
 		n_contours[frame_n] = cnt_count
-
-		sorted_order = np.argsort(areas)
-		mx = np.max(areas) / 100
-		areas /= mx
-		# area_std = int(np.std(areas))
-		area_mean = int(np.mean(areas))
-		areas = areas.astype('int32')
-		areas[areas == 0] = 1
-
-		new_frame[-area_mean:-area_mean+3, :sorted_order.shape[0]*20-10, 2] = 255
-
-		for i, index in enumerate(sorted_order):
-			new_frame[-areas[index]:, i*20:i*20+10, 1] = 255
-
-		cv.drawContours(new_frame, contours, -1, (0,0,255), 2)
-
 		out.write(new_frame)
 		frame_n += 1
 
